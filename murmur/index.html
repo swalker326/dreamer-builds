@@ -444,7 +444,7 @@ function generate(text, fromHash) {
   const n = sky.stars.length;
   $("meta").textContent = `${sky.catalog}  ·  ${n} star${n === 1 ? "" : "s"}  ·  ${NOTE_NAMES[sky.root]} ${sky.mode.name}  ·  ${sky.bpm} bpm`;
   document.title = sky.name + " — Murmur";
-  if (input.value.trim() !== text) input.value = text;
+  if (document.activeElement !== input && input.value.trim() !== text) input.value = text;
   if (!fromHash) { const h = "#" + encodeURIComponent(text); if (location.hash !== h) history.replaceState(null, "", h); }
 }
 function play() {
@@ -461,7 +461,7 @@ function stop() { stopAudio(); playing = null; setPlayLabel(); }
 
 input.addEventListener("keydown", e => { if (e.key === "Enter") { generate(input.value); } });
 let typeTimer = null;
-input.addEventListener("input", () => { clearTimeout(typeTimer); typeTimer = setTimeout(() => generate(input.value), 650); });
+input.addEventListener("input", () => { clearTimeout(typeTimer); typeTimer = setTimeout(() => { if (input.value.trim()) generate(input.value); }, 650); });
 playBtn.addEventListener("click", () => { if (input.value.trim() !== sky.text) generate(input.value); playing ? stop() : play(); });
 $("share").addEventListener("click", async () => {
   generate(input.value);
