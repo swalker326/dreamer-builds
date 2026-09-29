@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur — every sentence is a constellation</title>
+<style>
+  :root { --ink:#e9e4d4; --dim:#8f93a8; --accent:#ffd89a; --panel:rgba(12,14,30,.72); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#03040b; color:var(--ink); overflow:hidden;
+    font-family: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; }
+  canvas#sky { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  header { position:fixed; top:22px; left:0; right:0; text-align:center; pointer-events:none; }
+  #brand { position:fixed; top:18px; left:24px; font-size:13px; letter-spacing:.35em; text-transform:uppercase; color:var(--dim); }
+  #brand b { color:var(--ink); font-weight:normal; display:block; margin-bottom:4px; }
+  #brand i { font-size:11px; letter-spacing:.25em; }
+  @media (max-width: 1000px) { #brand { display:none; } }
+  #name { font-size:clamp(26px,3.4vw,44px); letter-spacing:.18em; font-variant:small-caps; margin:0;
+    text-shadow:0 0 18px rgba(255,216,154,.35); transition:opacity .8s; }
+  #meta { margin-top:6px; font-size:13px; color:var(--dim); letter-spacing:.12em; font-style:italic; }
+  #panel { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); width:min(760px,calc(100% - 32px));
+    background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:14px 16px 12px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  #row { display:flex; gap:10px; align-items:center; }
+  #text { flex:1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); color:var(--ink);
+    border-radius:10px; padding:11px 14px; font:inherit; font-size:17px; outline:none; }
+  #text:focus { border-color:rgba(255,216,154,.5); box-shadow:0 0 0 3px rgba(255,216,154,.08); }
+  button { font:inherit; cursor:pointer; color:var(--ink); background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.14); border-radius:10px; padding:10px 14px; font-size:14px; letter-spacing:.04em;
+    transition:background .2s,border-color .2s; white-space:nowrap; }
+  button:hover { background:rgba(255,255,255,.12); border-color:rgba(255,216,154,.45); }
+  #play { background:linear-gradient(180deg,rgba(255,216,154,.22),rgba(255,216,154,.08)); border-color:rgba(255,216,154,.45); min-width:92px; }
+  #presets { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  #presets span { font-size:12px; color:var(--dim); letter-spacing:.2em; text-transform:uppercase; margin-right:4px; }
+  #presets button { font-size:12.5px; padding:6px 10px; font-style:italic; color:#cfd2e4; }
+  #toast { position:fixed; left:50%; bottom:150px; transform:translateX(-50%); background:rgba(20,22,44,.9); padding:8px 14px;
+    border-radius:8px; font-size:13px; opacity:0; transition:opacity .4s; pointer-events:none; border:1px solid rgba(255,255,255,.1); }
+  #toast.show { opacity:1; }
+  label.tog { font-size:12px; color:var(--dim); margin-left:auto; cursor:pointer; user-select:none; letter-spacing:.08em; }
+  label.tog input { vertical-align:middle; accent-color:#ffd89a; }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<div id="brand"><b>Murmur</b><i>star atlas of sentences</i></div>
+<header>
+  <h1 id="name">—</h1>
+  <div id="meta"></div>
+</header>
+<div id="toast"></div>
+<div id="panel">
+  <div id="row">
+    <input id="text" type="text" maxlength="400" spellcheck="false" autocomplete="off"
+      placeholder="Type a sentence and press Enter…">
+    <button id="play" title="Play (Space when not typing)">▶ Play</button>
+    <button id="share" title="Copy a link that reproduces this sky">Share</button>
+  </div>
+  <div id="presets">
+    <span>Try</span>
+    <button data-p="The quiet river remembers every stone it has ever carried.">The quiet river…</button>
+    <button data-p="Hello, world.">Hello, world.</button>
+    <button data-p="I left the porch light on, in case you find your way home tonight.">The porch light…</button>
+    <label class="tog"><input type="checkbox" id="labels" checked> words</label>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- deterministic hashing + PRNG ---------- */
+function cyrb128(str) {
+  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+  for (let i = 0, k; i < str.length; i++) {
+    k = str.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= (h2 ^ h3 ^ h4); h2 ^= h1; h3 ^= h1; h4 ^= h1;
+  return [h1 >>> 0, h2 >>> 0, h3 >>> 0, h4 >>> 0];
+}
+function sfc32(a, b, c, d) {
+  return function () {
+    a |= 0; b |= 0; c |= 0; d |= 0;
+    const t = (((a + b) | 0) + d) | 0;
+    d = (d + 1) | 0; a = b ^ (b >>> 9); b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11); c = (c + t) | 0;
+    return (t >>> 0) / 4294967296;
+  };
+}
+function rngFrom(str) { const s = cyrb128(str); const r = sfc32(s[0], s[1], s[2], s[3]); for (let i = 0; i < 12; i++) r(); return r; }
+const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
+/* ---------- music tables ---------- */
+const MODES = [
+  { name: "major pentatonic", steps: [0, 2, 4, 7, 9] },
+  { name: "minor pentatonic", steps: [0, 3, 5, 7, 10] },
+  { name: "dorian",           steps: [0, 2, 3, 5, 7, 9, 10] },
+  { name: "lydian",           steps: [0, 2, 4, 6, 7, 9, 11] },
+  { name: "aeolian",          steps: [0, 2, 3, 5, 7, 8, 10] },
+  { name: "in-sen",           steps: [0, 1, 5, 7, 10] },
+  { name: "egyptian",         steps: [0, 2, 5, 7, 10] },
+];
+const NOTE_NAMES = ["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"];
+const SUFFIXES = ["is","a","ae","on","us","ara","ion","ea","or","ix","enna","ium"];
+const EPITHETS = ["Minor","Major","Borealis","Australis","Nova","Errans","Silens","Obscura","Lucida",""];
+
+/* ---------- text → sky model (pure, deterministic) ---------- */
+function syllables(w) {
+  const m = w.toLowerCase().match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy](?![aeiouy]))?/g);
+  return m && m.length ? m : [w.toLowerCase().slice(0, 3)];
+}
+function tokenize(text) {
+  const out = [];
+  const re = /([\p{L}\p{N}'’]+)([^\p{L}\p{N}\s]*)/gu;
+  let m;
+  while ((m = re.exec(text)) && out.length < 40) {
+    const word = m[1].replace(/^['’]+|['’]+$/g, "");
+    if (!word) continue;
+    out.push({ word, punct: m[2] || "" });
+  }
+  return out;
+}
+function starColor(word) {
+  // vowel-rich words burn hot & blue, consonant-heavy ones glow ember-orange
+  const letters = word.toLowerCase().replace(/[^\p{L}]/gu, "");
+  const v = (letters.match(/[aeiouy]/g) || []).length / Math.max(1, letters.length);
+  const t = Math.min(1, Math.max(0, (v - 0.2) / 0.45));
+  const cold = [170, 200, 255], mid = [255, 247, 232], hot = [255, 180, 110];
+  const lerp = (a, b, k) => a.map((x, i) => Math.round(x + (b[i] - x) * k));
+  return t > 0.5 ? lerp(mid, cold, (t - 0.5) * 2) : lerp(hot, mid, t * 2);
+}
+
+function buildSky(rawText) {
+  const text = rawText.trim().replace(/\s+/g, " ");
+  const key = text.toLowerCase();
+  const seed = cyrb128(key);
+  const R = rngFrom("sky:" + key);
+  const tokens = tokenize(text);
+  const ASPECT = 1.7;                        // normalized sky: x∈[0,1] y∈[0,1], width = ASPECT·height
+  const minD = Math.max(0.07, 0.24 - tokens.length * 0.009);
+  const stars = [];
+  tokens.forEach((t, i) => {
+    const wr = rngFrom("star:" + key + ":" + i + ":" + t.word.toLowerCase());
+    let best = null, bestD = -1;
+    for (let tries = 0; tries < 60; tries++) {
+      // drift left→right with the sentence, so reading order ≈ sky order, but loosely
+      const prog = tokens.length > 1 ? i / (tokens.length - 1) : 0.5;
+      const x = Math.min(0.96, Math.max(0.04, 0.12 + prog * 0.76 + (wr() - 0.5) * 0.38));
+      const y = 0.08 + wr() * 0.84;
+      let d = Infinity;
+      for (const s of stars) d = Math.min(d, Math.hypot((s.x - x) * ASPECT, s.y - y));
+      if (d > bestD) { bestD = d; best = { x, y }; }
+      if (d >= minD) break;
+    }
+    const len = t.word.length;
+    stars.push({
+      i, word: t.word, punct: t.punct, x: best.x, y: best.y,
+      mag: Math.min(1, 0.28 + len / 11),                // brightness from word length
+      color: starColor(t.word),
+      phase: wr() * Math.PI * 2,
+      spikes: len >= 7,
+    });
+  });
+
+  // constellation lines: minimum spanning tree (how real asterisms look), plus maybe one loop
+  const edges = [];
+  if (stars.length > 1) {
+    const inT = new Array(stars.length).fill(false), dist = new Array(stars.length).fill(Infinity), from = new Array(stars.length).fill(-1);
+    const D = (a, b) => Math.hypot((a.x - b.x) * ASPECT, a.y - b.y);
+    dist[0] = 0;
+    for (let k = 0; k < stars.length; k++) {
+      let u = -1;
+      for (let j = 0; j < stars.length; j++) if (!inT[j] && (u < 0 || dist[j] < dist[u])) u = j;
+      inT[u] = true;
+      if (from[u] >= 0) edges.push([from[u], u]);
+      for (let j = 0; j < stars.length; j++) if (!inT[j]) { const d = D(stars[u], stars[j]); if (d < dist[j]) { dist[j] = d; from[j] = u; } }
+    }
+    if (stars.length >= 5 && R() < 0.6) {
+      const has = new Set(edges.map(([a, b]) => a < b ? a + "-" + b : b + "-" + a));
+      let bestE = null, bd = Infinity;
+      for (let a = 0; a < stars.length; a++) for (let b = a + 1; b < stars.length; b++)
+        if (!has.has(a + "-" + b)) { const d = D(stars[a], stars[b]); if (d < bd) { bd = d; bestE = [a, b]; } }
+      if (bestE && bd < 0.45) edges.push(bestE);
+    }
+  }
+
+  // name: syllables harvested from the sentence, Latinized
+  const pool = [];
+  tokens.forEach(t => { if (t.word.length > 2 || tokens.length < 4) syllables(t.word).forEach(s => pool.push(s)); });
+  if (!pool.length) pool.push("mur", "mur");
+  const nR = rngFrom("name:" + key);
+  const nSyl = pool.length > 3 ? 2 + (nR() < 0.35 ? 1 : 0) : 2;
+  let stem = "";
+  for (let k = 0; k < nSyl; k++) stem += pick(nR, pool);
+  stem = stem.replace(/[^\p{L}]/gu, "").replace(/(.)\1\1+/g, "$1$1").slice(0, 11);
+  stem = stem.replace(/[aeiouy]+$/i, "");
+  let name = (stem || "mur") + pick(nR, SUFFIXES);
+  name = name.charAt(0).toUpperCase() + name.slice(1);
+  const ep = pick(nR, EPITHETS);
+  const catalog = "MRM " + (seed[1] % 9000 + 1000);
+
+  // music
+  const mR = rngFrom("music:" + key);
+  const mode = pick(mR, MODES);
+  const root = Math.floor(mR() * 12);
+  const bpm = 64 + Math.floor(mR() * 36);
+  const wave = pick(mR, ["sine", "triangle"]);
+
+  const hue = Math.floor(mR() * 360);
+  return { text, key, seed, stars, edges, name: ep ? name + " " + ep : name, catalog, mode, root, bpm, wave, hue };
+}
+
+/* sky → score: pitch = height in the sky, duration = word length, punctuation = rests */
+function buildScore(sky) {
+  const beat = 60 / sky.bpm;
+  const notes = [];
+  let t = 0;
+  const steps = sky.mode.steps, span = steps.length * 2 + 1;   // two octaves + top root
+  for (const s of sky.stars) {
+    const deg = Math.round((1 - s.y) * (span - 1));
+    const oct = Math.floor(deg / steps.length), st = steps[deg % steps.length];
+    const midi = 57 + sky.root + oct * 12 + st;                  // around A3..A5
+    const dur = beat * (s.word.length <= 3 ? 0.5 : s.word.length <= 6 ? 1 : 1.5);
+    notes.push({ star: s.i, t, dur, midi, vel: 0.35 + s.mag * 0.5 });
+    t += dur;
+    if (/[.!?;]/.test(s.punct)) t += beat * 1.5; else if (/[,:—–-]/.test(s.punct)) t += beat * 0.75;
+  }
+  return { notes, total: t + beat * 3 };
+}
+
+/* ---------- audio ---------- */
+let AC = null, master = null, wetIn = null, activeNodes = [];
+function ensureAudio() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = 0.8;
+  const comp = AC.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 3;
+  master.connect(comp).connect(AC.destination);
+  // reverb: synthetic decaying-noise impulse
+  const len = AC.sampleRate * 3.2, ir = AC.createBuffer(2, len, AC.sampleRate), r = rngFrom("ir");
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (r() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const conv = AC.createConvolver(); conv.buffer = ir;
+  const revGain = AC.createGain(); revGain.gain.value = 0.55;
+  // ping-pong-ish feedback delay, darkened
+  const delay = AC.createDelay(2), fb = AC.createGain(), lp = AC.createBiquadFilter();
+  delay.delayTime.value = 0.42; fb.gain.value = 0.38; lp.type = "lowpass"; lp.frequency.value = 2200;
+  wetIn = AC.createGain();
+  wetIn.connect(conv).connect(revGain).connect(master);
+  wetIn.connect(delay); delay.connect(lp).connect(fb).connect(delay); lp.connect(conv); lp.connect(master);
+}
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function voice(midi, t0, dur, vel, wave) {
+  const g = AC.createGain(), f = AC.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 2400; f.Q.value = 0.4;
+  const o1 = AC.createOscillator(), o2 = AC.createOscillator();
+  o1.type = wave; o2.type = "sine";
+  o1.frequency.value = mtof(midi); o2.frequency.value = mtof(midi + 12); o2.detune.value = 4;
+  const g2 = AC.createGain(); g2.gain.value = 0.18;
+  o1.connect(g); o2.connect(g2).connect(g);
+  g.connect(f); f.connect(master); f.connect(wetIn);
+  const peak = 0.22 * vel, rel = Math.max(1.6, dur * 2.2);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(peak, t0 + 0.035);
+  g.gain.exponentialRampToValueAtTime(peak * 0.45, t0 + dur);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + rel);
+  o1.start(t0); o2.start(t0); o1.stop(t0 + dur + rel + 0.05); o2.stop(t0 + dur + rel + 0.05);
+  activeNodes.push(o1, o2);
+}
+function pad(root, t0, total, sky) {
+  const g = AC.createGain(), f = AC.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 520; f.Q.value = 0.7;
+  const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = 0.09; lg.gain.value = 240;
+  lfo.connect(lg).connect(f.frequency);
+  const fifth = sky.mode.steps.includes(7) ? 7 : 5;
+  [0, fifth, 12].forEach((iv, k) => [-7, 7].forEach(det => {
+    const o = AC.createOscillator(); o.type = "sawtooth";
+    o.frequency.value = mtof(45 + root + iv); o.detune.value = det + k;
+    o.connect(g); o.start(t0); o.stop(t0 + total + 3); activeNodes.push(o);
+  }));
+  g.connect(f); f.connect(master); f.connect(wetIn);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.028, t0 + 2.5);
+  g.gain.setValueAtTime(0.028, t0 + Math.max(2.6, total - 1));
+  g.gain.linearRampToValueAtTime(0, t0 + total + 2.5);
+  lfo.start(t0); lfo.stop(t0 + total + 3); activeNodes.push(lfo);
+}
+function stopAudio() { activeNodes.forEach(n => { try { n.stop(); } catch (e) {} }); activeNodes = []; }
+
+/* ---------- rendering ---------- */
+const cv = document.getElementById("sky"), cx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, bgCanvas = null, dust = [];
+let sky = null, score = null, playing = null, revealT0 = 0, showLabels = true;
+
+function skyRect() {
+  // area of the canvas used for the constellation (avoid title & panel)
+  const top = 110, bottom = H - 170, left = 40, right = W - 40;
+  const h = Math.max(160, bottom - top), w = Math.min(right - left, h * 1.7 * 1.15);
+  return { x: (W - w) / 2, y: top, w, h };
+}
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  if (sky) paintBackground();
+}
+function paintBackground() {
+  bgCanvas = document.createElement("canvas");
+  bgCanvas.width = W * DPR; bgCanvas.height = H * DPR;
+  const b = bgCanvas.getContext("2d"); b.scale(DPR, DPR);
+  const r = rngFrom("bg:" + sky.key);
+  const g = b.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#02030a"); g.addColorStop(0.6, "#060a1c"); g.addColorStop(1, "#0b0f24");
+  b.fillStyle = g; b.fillRect(0, 0, W, H);
+  // nebula wisps tinted per sentence
+  b.globalCompositeOperation = "lighter";
+  for (let k = 0; k < 7; k++) {
+    const x = r() * W, y = r() * H * 0.9, rad = (0.18 + r() * 0.35) * Math.max(W, H);
+    const hh = (sky.hue + (r() - 0.5) * 70 + 360) % 360;
+    const ng = b.createRadialGradient(x, y, 0, x, y, rad);
+    ng.addColorStop(0, `hsla(${hh},60%,45%,${0.045 + r() * 0.04})`); ng.addColorStop(1, "hsla(0,0%,0%,0)");
+    b.fillStyle = ng; b.fillRect(0, 0, W, H);
+  }
+  // milky-way band of faint dust
+  const ang = (r() - 0.5) * 1.1, cy = H * (0.3 + r() * 0.4);
+  for (let k = 0; k < 2600; k++) {
+    const u = r() * W * 1.4 - W * 0.2, off = (r() + r() + r() - 1.5) * H * 0.16;
+    const x = u, y = cy + (u - W / 2) * Math.tan(ang) + off;
+    b.fillStyle = `rgba(200,210,255,${0.05 + r() * 0.12})`;
+    b.fillRect(x, y, r() < 0.9 ? 0.6 : 1.1, r() < 0.9 ? 0.6 : 1.1);
+  }
+  b.globalCompositeOperation = "source-over";
+  // twinkling field stars (drawn live)
+  dust = [];
+  const n = Math.floor(W * H / 3200);
+  for (let k = 0; k < n; k++) dust.push({ x: r() * W, y: r() * H, s: Math.pow(r(), 3) * 1.6 + 0.3, p: r() * 6.28, f: 0.4 + r() * 1.8, a: 0.25 + r() * 0.6 });
+}
+function toScreen(s, R) { return { x: R.x + s.x * R.w, y: R.y + s.y * R.h }; }
+
+function drawStar(x, y, rad, col, alpha, spikes, glow) {
+  const [r, g, b] = col;
+  const halo = rad * (6.5 + glow * 11);
+  const gr = cx.createRadialGradient(x, y, 0, x, y, halo);
+  gr.addColorStop(0, `rgba(${r},${g},${b},${0.7 * alpha + glow * 0.3})`);
+  gr.addColorStop(0.16, `rgba(${r},${g},${b},${0.22 * alpha + glow * 0.25})`);
+  gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  cx.fillStyle = gr; cx.beginPath(); cx.arc(x, y, halo, 0, 6.2832); cx.fill();
+  if (spikes || glow > 0.05) {
+    const L = rad * (spikes ? 7 : 3) * (1 + glow * 2.2);
+    cx.strokeStyle = `rgba(${r},${g},${b},${0.35 * alpha + glow * 0.5})`; cx.lineWidth = 0.8;
+    cx.beginPath(); cx.moveTo(x - L, y); cx.lineTo(x + L, y); cx.moveTo(x, y - L); cx.lineTo(x, y + L); cx.stroke();
+  }
+  cx.fillStyle = `rgba(255,255,255,${Math.min(1, 0.85 * alpha + glow)})`;
+  cx.beginPath(); cx.arc(x, y, rad * (1 + glow * 0.6), 0, 6.2832); cx.fill();
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!sky) return;
+  const t = now / 1000;
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  cx.drawImage(bgCanvas, 0, 0);
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  for (const d of dust) {
+    const a = d.a * (0.55 + 0.45 * Math.sin(t * d.f + d.p));
+    cx.fillStyle = `rgba(225,230,255,${a})`;
+    cx.fillRect(d.x, d.y, d.s, d.s);
+  }
+  const R = skyRect();
+  const reveal = Math.min(1, (now - revealT0) / 1600);
+  // playback state
+  let glows = new Map(), comet = null, lit = new Set();
+  if (playing) {
+    const pt = (now - playing.perf0) / 1000;
+    if (pt > score.total + 1) { playing = null; setPlayLabel(); }
+    else score.notes.forEach((n, k) => {
+      const age = pt - n.t;
+      if (age >= 0) {
+        lit.add(n.star);
+        const g = age < n.dur ? 1 : Math.max(0, 1 - (age - n.dur) / 1.2);
+        if (g > 0) glows.set(n.star, Math.max(glows.get(n.star) || 0, g));
+        const nx = score.notes[k + 1];
+        if (nx && pt < nx.t && age >= 0) comet = { a: n.star, b: nx.star, k: Math.min(1, age / (nx.t - n.t)) };
+      }
+    });
+  }
+  // lines
+  cx.lineCap = "round";
+  sky.edges.forEach(([a, b], k) => {
+    const A = toScreen(sky.stars[a], R), B = toScreen(sky.stars[b], R);
+    const e = Math.max(0, Math.min(1, reveal * (sky.edges.length + 2) - k * 0.8));
+    if (e <= 0) return;
+    const on = lit.has(a) && lit.has(b);
+    cx.strokeStyle = on ? "rgba(255,220,160,0.55)" : "rgba(190,200,240,0.22)";
+    cx.lineWidth = on ? 1.4 : 1;
+    cx.beginPath(); cx.moveTo(A.x, A.y); cx.lineTo(A.x + (B.x - A.x) * e, A.y + (B.y - A.y) * e); cx.stroke();
+  });
+  // comet travelling to the next note
+  if (comet) {
+    const A = toScreen(sky.stars[comet.a], R), B = toScreen(sky.stars[comet.b], R);
+    const ease = comet.k * comet.k * (3 - 2 * comet.k);
+    for (let j = 0; j < 14; j++) {
+      const kk = Math.max(0, ease - j * 0.018);
+      const x = A.x + (B.x - A.x) * kk, y = A.y + (B.y - A.y) * kk;
+      cx.fillStyle = `rgba(255,225,170,${0.5 * (1 - j / 14)})`;
+      cx.beginPath(); cx.arc(x, y, 2.2 * (1 - j / 16), 0, 6.2832); cx.fill();
+    }
+  }
+  // stars + labels
+  cx.textAlign = "center"; cx.font = "italic 13px 'Iowan Old Style', Palatino, Georgia, serif";
+  sky.stars.forEach((s, k) => {
+    const appear = Math.max(0, Math.min(1, reveal * (sky.stars.length + 3) - k));
+    if (appear <= 0) return;
+    const P = toScreen(s, R);
+    const tw = 0.85 + 0.15 * Math.sin(t * 1.7 + s.phase);
+    const glow = glows.get(s.i) || 0;
+    drawStar(P.x, P.y, (1.5 + s.mag * 2.9) * (0.4 + 0.6 * appear), s.color, appear * tw * (0.55 + s.mag * 0.45), s.spikes, glow);
+    if (showLabels) {
+      cx.fillStyle = glow > 0.02 ? `rgba(255,228,180,${(0.5 + glow * 0.5) * appear})` : `rgba(210,214,235,${0.5 * appear})`;
+      cx.fillText(s.word, P.x, P.y + 20 + s.mag * 4);
+    }
+  });
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const input = $("text"), playBtn = $("play");
+function setPlayLabel() { playBtn.textContent = playing ? "■ Stop" : "▶ Play"; }
+function toast(msg) { const el = $("toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), 2200); }
+
+function generate(text, fromHash) {
+  text = (text || "").trim();
+  if (!text) text = "Murmur";
+  if (playing) stop();
+  sky = buildSky(text); score = buildScore(sky);
+  paintBackground(); revealT0 = performance.now();
+  $("name").textContent = sky.name;
+  const n = sky.stars.length;
+  $("meta").textContent = `${sky.catalog}  ·  ${n} star${n === 1 ? "" : "s"}  ·  ${NOTE_NAMES[sky.root]} ${sky.mode.name}  ·  ${sky.bpm} bpm`;
+  document.title = sky.name + " — Murmur";
+  if (input.value.trim() !== text) input.value = text;
+  if (!fromHash) { const h = "#" + encodeURIComponent(text); if (location.hash !== h) history.replaceState(null, "", h); }
+}
+function play() {
+  ensureAudio();
+  if (AC.state === "suspended") AC.resume();
+  stopAudio();
+  const t0 = AC.currentTime + 0.12;
+  pad(sky.root, t0, score.total, sky);
+  score.notes.forEach(n => voice(n.midi, t0 + n.t, n.dur, n.vel, sky.wave));
+  playing = { perf0: performance.now() + 120 };
+  setPlayLabel();
+}
+function stop() { stopAudio(); playing = null; setPlayLabel(); }
+
+input.addEventListener("keydown", e => { if (e.key === "Enter") { generate(input.value); } });
+let typeTimer = null;
+input.addEventListener("input", () => { clearTimeout(typeTimer); typeTimer = setTimeout(() => generate(input.value), 650); });
+playBtn.addEventListener("click", () => { if (input.value.trim() !== sky.text) generate(input.value); playing ? stop() : play(); });
+$("share").addEventListener("click", async () => {
+  generate(input.value);
+  const url = location.href.split("#")[0] + "#" + encodeURIComponent(sky.text);
+  history.replaceState(null, "", url);
+  try { await navigator.clipboard.writeText(url); toast("Link copied — it will always open this exact sky."); }
+  catch (e) { window.prompt("Copy this link:", url); }
+});
+document.querySelectorAll("#presets button[data-p]").forEach(b => b.addEventListener("click", () => { generate(b.dataset.p); play(); }));
+$("labels").addEventListener("change", e => { showLabels = e.target.checked; });
+window.addEventListener("keydown", e => { if (e.code === "Space" && document.activeElement !== input) { e.preventDefault(); playBtn.click(); } });
+window.addEventListener("hashchange", () => { const t = readHash(); if (t && t !== sky.text) generate(t, true); });
+window.addEventListener("resize", resize);
+function readHash() { try { return decodeURIComponent(location.hash.slice(1)); } catch (e) { return location.hash.slice(1); } }
+
+// tiny public hook for testing/embedding
+window.Murmur = { buildSky, buildScore, generate, play, stop, get sky() { return sky; },
+    _seek(sec) { if (playing) playing.perf0 = performance.now() - sec * 1000; } };
+
+resize();
+generate(readHash() || "The quiet river remembers every stone it has ever carried.", !!readHash());
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
