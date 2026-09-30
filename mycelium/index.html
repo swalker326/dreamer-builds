@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0e0b09" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <title>Mycelium</title>
 <style>
   :root {
@@ -23,28 +26,49 @@
     color: var(--cream);
     font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
     overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
   #wrap {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
   }
   canvas#soil {
+    position: absolute;
+    left: 0; top: 0;
     display: block;
     width: 100%;
     height: 100%;
     cursor: crosshair;
     background: var(--soil);
+    touch-action: none;
   }
   .hud {
     position: absolute;
     top: 0; left: 0; right: 0;
-    padding: 22px 28px 0;
+    padding: calc(14px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left));
     pointer-events: none;
     display: flex;
     justify-content: space-between;
     gap: 24px;
     align-items: flex-start;
+  }
+  .title-block, .stats, .hint {
+    background: rgba(14, 11, 9, 0.62);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-radius: 12px;
+    padding: 10px 14px;
+  }
+  .stats { padding: 6px 12px; }
+  .hint { padding: 6px 12px; }
+  .title-block p, .stats {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.85);
   }
   .title-block h1 {
     font-weight: 500;
@@ -74,8 +98,9 @@
   .stats span { color: var(--amber); }
   .panel {
     position: absolute;
-    left: 28px;
-    bottom: 24px;
+    left: calc(28px + env(safe-area-inset-left));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    max-width: calc(100% - 56px);
     display: flex;
     flex-wrap: wrap;
     gap: 10px 14px;
@@ -100,6 +125,25 @@
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
+    touch-action: manipulation;
+  }
+  #btnSound[aria-pressed="false"] {
+    color: var(--muted);
+    border-style: dashed;
+  }
+  #btnSound .dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 6px rgba(240,195,90,0.8);
+    vertical-align: 1px;
+  }
+  #btnSound[aria-pressed="false"] .dot {
+    background: transparent;
+    border: 1px solid var(--muted);
+    box-shadow: none;
   }
   .panel button:hover, .mode-toggle:hover {
     background: rgba(70, 48, 24, 0.95);
@@ -123,14 +167,34 @@
     -webkit-appearance: none;
     appearance: none;
     width: 100px;
+    height: 24px;
+    background: transparent;
+    outline: none;
+    touch-action: none;
+    cursor: pointer;
+  }
+  .slider input[type="range"]::-webkit-slider-runnable-track {
     height: 4px;
     border-radius: 2px;
     background: rgba(138, 122, 104, 0.4);
-    outline: none;
+  }
+  .slider input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(138, 122, 104, 0.4);
   }
   .slider input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 14px; height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(212, 162, 76, 0.6);
+  }
+  .slider input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border: none;
     border-radius: 50%;
     background: var(--amber);
     cursor: pointer;
@@ -156,6 +220,64 @@
     font-size: 0.68rem;
     color: var(--muted);
   }
+  /* Touch devices: no keyboard hint, bigger thumbs */
+  @media (hover: none) and (pointer: coarse) {
+    .hint { display: none; }
+  }
+  html.touch .hint { display: none; }
+  @media (pointer: coarse) {
+    .slider input[type="range"] { height: 44px; }
+    .slider input[type="range"]::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: -11px; }
+    .slider input[type="range"]::-moz-range-thumb { width: 26px; height: 26px; }
+  }
+  /* Phones / narrow screens */
+  @media (max-width: 640px) {
+    .hud {
+      padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left));
+      gap: 8px;
+    }
+    .title-block { padding: 8px 12px; }
+    .stats { padding: 6px 10px; }
+    .title-block h1 { font-size: 1.15rem; letter-spacing: 0.16em; }
+    .title-block p { font-size: 0.8rem; line-height: 1.4; max-width: 17rem; }
+    .stats { font-size: 0.66rem; line-height: 1.55; padding-top: 2px; white-space: nowrap; }
+    .panel {
+      left: calc(8px + env(safe-area-inset-left));
+      right: calc(8px + env(safe-area-inset-right));
+      bottom: calc(8px + env(safe-area-inset-bottom));
+      max-width: none;
+      padding: 8px;
+      gap: 6px;
+      border-radius: 12px;
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+    }
+    .panel button {
+      grid-column: span 2;
+      min-width: 0;
+      min-height: 44px;
+      padding: 6px 4px;
+      font-size: 0.8rem;
+    }
+    .slider {
+      grid-column: span 5;
+      min-height: 44px;
+      padding: 0 6px;
+      font-size: 0.78rem;
+    }
+    .slider input[type="range"] { flex: 1; width: auto; min-width: 0; }
+    .hint { display: none; }
+  }
+  @media (max-width: 360px) {
+    .panel button { font-size: 0.72rem; }
+    #btnSound .dot { margin-right: 3px; }
+  }
+  /* Short landscape phones: keep the panel compact */
+  @media (max-height: 480px) and (orientation: landscape) {
+    .title-block p { display: none; }
+    .panel { padding: 6px; gap: 6px; }
+    .panel button { min-height: 40px; }
+  }
 </style>
 </head>
 <body>
@@ -177,6 +299,7 @@
     <button type="button" id="btnReset">Reset</button>
     <button type="button" class="mode-toggle active" id="btnNutrient" title="Click or drag to place nutrients">Nutrient</button>
     <button type="button" class="mode-toggle" id="btnSpore" title="Click to plant a spore">Spore</button>
+    <button type="button" id="btnSound" aria-pressed="true" title="Toggle the growth hum (M)"><span class="dot"></span>Sound</button>
     <label class="slider">Speed
       <input type="range" id="speed" min="0.35" max="2.4" step="0.05" value="1" />
     </label>
@@ -186,7 +309,7 @@
   </div>
   <div class="hint">
     click / drag · place nutrients<br>
-    <kbd>S</kbd> spore · <kbd>N</kbd> nutrient · <kbd>Space</kbd> pause · <kbd>R</kbd> reset
+    <kbd>S</kbd> spore · <kbd>N</kbd> nutrient · <kbd>Space</kbd> pause · <kbd>R</kbd> reset · <kbd>M</kbd> sound
   </div>
 </div>
 <script>
@@ -209,6 +332,7 @@
   const btnSpore = document.getElementById("btnSpore");
   const speedSlider = document.getElementById("speed");
   const branchSlider = document.getElementById("branch");
+  const btnSound = document.getElementById("btnSound");
 
   let W = 0, H = 0, dpr = 1;
   let running = true;
@@ -222,15 +346,27 @@
   let nutrientPaint = false;
   let frame = 0;
 
-  const MAX_TIPS = 900;
-  const MAX_NUTRIENTS = 80;
+  let MAX_TIPS = 900;      // lowered on small / touch screens in resize()
+  let MAX_NUTRIENTS = 80;
+  let MOTE_COUNT = 48;
+  const isCoarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
   const SENSE_R = 160;
   const ABSORB_R = 10;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth;
-    H = window.innerHeight;
+    W = Math.max(1, Math.round(window.innerWidth));
+    H = Math.max(1, Math.round(window.innerHeight));
+    // Performance budget: small screens / phones get fewer tips and motes
+    const small = Math.min(W, H) < 600 || isCoarse;
+    MAX_TIPS = small ? 480 : 900;
+    MAX_NUTRIENTS = small ? 50 : 80;
+    MOTE_COUNT = small ? 28 : 48;
+    if (tips.length > MAX_TIPS) {
+      tips.sort((a, b) => b.energy - a.energy);
+      tips.length = MAX_TIPS;
+    }
+    if (nutrients.length > MAX_NUTRIENTS) nutrients.splice(0, nutrients.length - MAX_NUTRIENTS);
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = W + "px";
@@ -314,7 +450,7 @@
 
     // Soft ambient motes
     motes = [];
-    for (let i = 0; i < 48; i++) {
+    for (let i = 0; i < MOTE_COUNT; i++) {
       motes.push({
         x: rand(0, W), y: rand(0, H),
         r: rand(0.4, 1.4),
@@ -397,6 +533,7 @@
     tip.thickness = Math.min(2.4, tip.thickness + 0.35);
     pulses.push({ x: n.x, y: n.y, r: 6, max: 55, life: 1, color: "gold" });
     thickenNear(n.x, n.y, 28);
+    Hum.chime(n.x / Math.max(1, W));
 
     // Fan of new tips
     const fan = 3 + Math.floor(Math.random() * 3);
@@ -584,6 +721,243 @@
     elNutrients.textContent = String(nutrients.length);
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Hum: a warm Web Audio drone that swells with the growing network.
+  // No files. Created lazily inside the first user gesture (iOS requirement).
+  // ---------------------------------------------------------------------------
+  const Hum = (() => {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ac = null, master = null, muteGain = null, droneGain = null, lp = null;
+    let harmGain = null, noiseGain = null, lfo = null, lfoFilt = null, comp = null;
+    let voices = [];
+    let started = false;
+    let muted = false;
+    let level = 0;          // smoothed growth level 0..1
+    let target = 0;         // raw target 0..1
+    let lastChime = 0;
+    let lastApply = 0;
+    const MASTER_MAX = 0.5; // master stays modest; per-layer gains are small too
+    const CHIME_NOTES = [220, 261.63, 293.66, 329.63, 392, 440, 523.25]; // A-minor pentatonic-ish
+
+    function build() {
+      ac = new AC({ latencyHint: "playback" });
+      comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 18;
+      comp.ratio.value = 4;
+      comp.attack.value = 0.02;
+      comp.release.value = 0.4;
+
+      muteGain = ac.createGain();
+      muteGain.gain.value = muted ? 0 : 1;
+      master = ac.createGain();
+      master.gain.value = 0;
+      master.connect(muteGain).connect(comp).connect(ac.destination);
+
+      // Warm low-pass that opens up with growth
+      lp = ac.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 160;
+      lp.Q.value = 0.9;
+      droneGain = ac.createGain();
+      droneGain.gain.value = 0.0;
+      lp.connect(droneGain).connect(master);
+
+      // Slow breathing LFO on the drone level and filter
+      lfo = ac.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = 0.09;
+      const lfoAmp = ac.createGain();
+      lfoAmp.gain.value = 0.012;
+      lfo.connect(lfoAmp).connect(droneGain.gain);
+      lfoFilt = ac.createGain();
+      lfoFilt.gain.value = 40;
+      lfo.connect(lfoFilt).connect(lp.frequency);
+      lfo.start();
+
+      // Base: detuned low sines + a soft triangle fifth
+      const base = 55; // A1
+      const defs = [
+        { f: base,        type: "sine",     g: 0.34, det: -4 },
+        { f: base,        type: "sine",     g: 0.30, det: +5 },
+        { f: base * 1.5,  type: "triangle", g: 0.12, det: -3 },
+        { f: base * 2,    type: "sine",     g: 0.16, det: +7 },
+      ];
+      for (const d of defs) voices.push(makeVoice(d, lp));
+
+      // Upper harmonics fade in as the network grows
+      harmGain = ac.createGain();
+      harmGain.gain.value = 0;
+      harmGain.connect(lp);
+      const hdefs = [
+        { f: base * 3,   type: "triangle", g: 0.10, det: +3 },
+        { f: base * 4,   type: "sine",     g: 0.08, det: -6 },
+        { f: base * 6,   type: "sine",     g: 0.04, det: +9 },
+      ];
+      for (const d of hdefs) voices.push(makeVoice(d, harmGain));
+
+      // Filtered noise: soft earthy rustle
+      const len = ac.sampleRate * 2;
+      const buf = ac.createBuffer(1, len, ac.sampleRate);
+      const data = buf.getChannelData(0);
+      let b = 0;
+      for (let i = 0; i < len; i++) {
+        // gently brown-ish noise
+        b = (b + (Math.random() * 2 - 1) * 0.06) * 0.985;
+        data[i] = b * 3;
+      }
+      const noise = ac.createBufferSource();
+      noise.buffer = buf;
+      noise.loop = true;
+      const bp = ac.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 320;
+      bp.Q.value = 0.6;
+      noiseGain = ac.createGain();
+      noiseGain.gain.value = 0;
+      noise.connect(bp).connect(noiseGain).connect(lp);
+      noise.start();
+    }
+
+    function makeVoice(d, dest) {
+      const o = ac.createOscillator();
+      o.type = d.type;
+      o.frequency.value = d.f;
+      o.detune.value = d.det;
+      const g = ac.createGain();
+      g.gain.value = d.g;
+      o.connect(g).connect(dest);
+      o.start();
+      return { o, g, det: d.det };
+    }
+
+    // Must be called synchronously inside a user gesture handler.
+    function unlock() {
+      if (!AC) return;
+      try {
+        if (!ac) {
+          build();
+          // iOS: play a 1-sample silent buffer inside the gesture to fully unlock
+          const s = ac.createBufferSource();
+          s.buffer = ac.createBuffer(1, 1, 22050);
+          s.connect(ac.destination);
+          s.start(0);
+        }
+        if (ac.state !== "running") ac.resume();
+        started = true;
+      } catch (err) {
+        // Audio is optional; never break the sim
+        started = false;
+      }
+    }
+
+    function setMuted(m) {
+      muted = m;
+      if (ac && muteGain) {
+        const t = ac.currentTime;
+        muteGain.gain.cancelScheduledValues(t);
+        muteGain.gain.setTargetAtTime(m ? 0 : 1, t, 0.12);
+      }
+    }
+
+    // Called every frame from tick()
+    function update(dt, tipCount, hyphae, maxTips, isRunning) {
+      // Log-scaled growth measures so the swell is quick early, gentle later
+      const tipsN = Math.log1p(tipCount) / Math.log1p(maxTips);
+      const lenN = Math.log1p(hyphae / 200) / Math.log1p(20000);
+      let t = clamp(0.62 * tipsN + 0.38 * lenN, 0, 1);
+      if (!isRunning) t *= 0.3;              // soften while paused
+      target = t;
+      const k = 1 - Math.exp(-dt / 1.4);     // ~1.4s smoothing
+      level += (target - level) * k;
+
+      if (!ac || !started) return;
+      const now = ac.currentTime;
+      if (now - lastApply < 0.05) return;    // ~20 Hz param updates
+      lastApply = now;
+      const g = level;
+      const tc = 0.35;
+      master.gain.setTargetAtTime(MASTER_MAX, now, 0.5);
+      droneGain.gain.setTargetAtTime(0.035 + 0.15 * Math.pow(g, 0.9), now, tc);
+      lp.frequency.setTargetAtTime(150 * Math.pow(1500 / 150, g), now, tc);
+      harmGain.gain.setTargetAtTime(0.9 * Math.pow(g, 1.6), now, tc);
+      noiseGain.gain.setTargetAtTime(0.04 + 0.22 * g, now, tc);
+      lfo.frequency.setTargetAtTime(0.07 + 0.22 * g, now, 1.0);
+      lfoFilt.gain.setTargetAtTime(30 + 160 * g, now, tc);
+      // Detune spreads a touch as it grows -> slow organic beating
+      for (const v of voices) v.o.detune.setTargetAtTime(v.det * (1 + g * 1.6), now, 1.0);
+    }
+
+    // Soft chime when a tip absorbs a nutrient (pan by x 0..1)
+    function chime(xN) {
+      if (!ac || !started || muted || ac.state !== "running") return;
+      const now = ac.currentTime;
+      if (now - lastChime < 0.09) return;
+      lastChime = now;
+      const f = CHIME_NOTES[(Math.random() * CHIME_NOTES.length) | 0] * (Math.random() < 0.3 ? 2 : 1);
+      const env = ac.createGain();
+      env.gain.setValueAtTime(0, now);
+      env.gain.linearRampToValueAtTime(0.035, now + 0.012);
+      env.gain.exponentialRampToValueAtTime(0.0008, now + 1.6);
+      let out = env;
+      if (ac.createStereoPanner) {
+        const pan = ac.createStereoPanner();
+        pan.pan.value = clamp((xN - 0.5) * 1.4, -0.8, 0.8);
+        env.connect(pan);
+        out = pan;
+      }
+      out.connect(master);
+      const o1 = ac.createOscillator();
+      o1.type = "sine";
+      o1.frequency.value = f;
+      const o2 = ac.createOscillator();
+      o2.type = "sine";
+      o2.frequency.value = f * 2.01;
+      const g2 = ac.createGain();
+      g2.gain.value = 0.25;
+      o1.connect(env);
+      o2.connect(g2).connect(env);
+      o1.start(now); o2.start(now);
+      o1.stop(now + 1.7); o2.stop(now + 1.7);
+      o1.onended = () => { try { env.disconnect(); out.disconnect(); } catch (_) {} };
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!ac) return;
+      if (document.hidden) ac.suspend();
+      else if (started) ac.resume();
+    });
+
+    return {
+      available: !!AC,
+      unlock,
+      update,
+      chime,
+      setMuted,
+      get muted() { return muted; },
+      get started() { return started; },
+      // Read-only debug snapshot for tests
+      debug() {
+        return {
+          available: !!AC,
+          built: !!ac,
+          started,
+          state: ac ? ac.state : "none",
+          muted,
+          level,
+          target,
+          masterGain: master ? master.gain.value : 0,
+          droneGain: droneGain ? droneGain.gain.value : 0,
+          harmGain: harmGain ? harmGain.gain.value : 0,
+          noiseGain: noiseGain ? noiseGain.gain.value : 0,
+          filterHz: lp ? lp.frequency.value : 0,
+          voices: voices.length,
+        };
+      },
+    };
+  })();
+
   function tick(ts) {
     if (!lastT) lastT = ts;
     let dt = (ts - lastT) / 1000;
@@ -612,6 +986,7 @@
     drawTips();
     drawPulses(dt);
     updateStats();
+    Hum.update(dt, tips.length, hyphaCount, MAX_TIPS, running);
 
     requestAnimationFrame(tick);
   }
@@ -625,25 +1000,83 @@
     };
   }
 
+  // Active painting pointers (multi-touch friendly): id -> last placed point
+  const painters = new Map();
+  const PAINT_STEP = 22; // px of drag between dropped nutrients
+
   canvas.addEventListener("pointerdown", (e) => {
-    canvas.setPointerCapture(e.pointerId);
+    if (e.pointerType === "touch") document.documentElement.classList.add("touch");
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     const { x, y } = canvasPos(e);
     if (mode === "spore") {
       plantSpore(x, y);
     } else {
+      painters.set(e.pointerId, { x, y });
       nutrientPaint = true;
       addNutrient(x, y);
     }
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (!nutrientPaint || mode !== "nutrient") return;
-    if (Math.random() < 0.35) {
-      const { x, y } = canvasPos(e);
-      addNutrient(x + rand(-4, 4), y + rand(-4, 4), rand(0.7, 1.1));
+    const last = painters.get(e.pointerId);
+    if (!last || mode !== "nutrient") return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (evs.length ? evs : [e])) {
+      const { x, y } = canvasPos(ev);
+      if (Math.hypot(x - last.x, y - last.y) >= PAINT_STEP) {
+        addNutrient(x + rand(-4, 4), y + rand(-4, 4), rand(0.7, 1.1));
+        last.x = x; last.y = y;
+      }
     }
   });
-  canvas.addEventListener("pointerup", () => { nutrientPaint = false; });
-  canvas.addEventListener("pointercancel", () => { nutrientPaint = false; });
+  function endPaint(e) {
+    painters.delete(e.pointerId);
+    nutrientPaint = painters.size > 0;
+  }
+  canvas.addEventListener("pointerup", endPaint);
+  canvas.addEventListener("pointercancel", endPaint);
+  canvas.addEventListener("lostpointercapture", endPaint);
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  // iOS Safari ignores user-scalable=no for pinch; block its gesture events
+  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  }
+  // Block double-tap-zoom / scroll from touches that start on the canvas
+  canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+  // Audio: start on the very first gesture anywhere (capture phase, so it runs
+  // synchronously inside the gesture — required by iOS Safari). Also re-resume
+  // on later gestures in case iOS interrupted the context.
+  function onAnyGesture(e) {
+    if (e.target === btnSound || (btnSound.contains && btnSound.contains(e.target))) return;
+    if (!Hum.muted) Hum.unlock();
+  }
+  window.addEventListener("pointerdown", onAnyGesture, true);
+  window.addEventListener("touchend", onAnyGesture, true);
+  window.addEventListener("keydown", onAnyGesture, true);
+
+  function renderSound() {
+    const on = Hum.available && !Hum.muted;
+    btnSound.setAttribute("aria-pressed", on ? "true" : "false");
+    btnSound.lastChild.textContent = on ? "Sound" : "Muted";
+    btnSound.title = Hum.available ? (on ? "Sound on — tap to mute (M)" : "Sound off — tap to unmute (M)") : "Web Audio not supported";
+  }
+  function toggleSound() {
+    if (!Hum.available) return;
+    if (!Hum.started && !Hum.muted) {
+      // First interaction was the sound button itself: start sound, stay on
+      Hum.unlock();
+    } else {
+      Hum.setMuted(!Hum.muted);
+      if (!Hum.muted) Hum.unlock();
+    }
+    renderSound();
+  }
+  btnSound.addEventListener("click", toggleSound);
+  if (!Hum.available) btnSound.disabled = true;
+  renderSound();
 
   function setMode(m) {
     mode = m;
@@ -678,14 +1111,35 @@
       setMode("spore");
     } else if (e.key === "n" || e.key === "N") {
       setMode("nutrient");
+    } else if (e.key === "m" || e.key === "M") {
+      toggleSound();
     }
   });
 
-  window.addEventListener("resize", () => {
-    const cx = W / 2, cy = H / 2;
-    resize();
-    // Keep sim; positions stay in CSS pixels
-  });
+  // Resize / orientation: coalesce into one rAF, re-check after rotation settles
+  let resizeQueued = false;
+  function queueResize() {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      const w = Math.round(window.innerWidth), h = Math.round(window.innerHeight);
+      const d = Math.min(window.devicePixelRatio || 1, 2);
+      if (w === W && h === H && d === dpr) return;
+      const oldW = W, oldH = H;
+      resize();
+      // Keep the sim roughly in place when the viewport changes shape
+      if (oldW && oldH && (oldW !== W || oldH !== H)) {
+        const sx = W / oldW, sy = H / oldH;
+        for (const t of tips) { t.x *= sx; t.y *= sy; t.lastX *= sx; t.lastY *= sy; }
+        for (const n of nutrients) { n.x *= sx; n.y *= sy; }
+        for (const m of motes) { m.x *= sx; m.y *= sy; }
+      }
+    });
+  }
+  window.addEventListener("resize", queueResize);
+  window.addEventListener("orientationchange", () => { queueResize(); setTimeout(queueResize, 250); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", queueResize);
 
   // Test hooks for headless proof capture
   window.Mycelium = {
@@ -700,7 +1154,13 @@
       hyphae: hyphaCount,
       running,
       mode,
+      maxTips: MAX_TIPS,
+      W, H, dpr,
+      canvasW: canvas.width,
+      canvasH: canvas.height,
     }),
+    // Read-only audio snapshot (gain values, smoothed growth level)
+    getAudio: () => Hum.debug(),
     // Fast-forward N sim steps without waiting on rAF wall clock
     step: (n = 1) => {
       const speedMul = parseFloat(speedSlider.value);
