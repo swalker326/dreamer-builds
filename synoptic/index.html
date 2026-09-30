@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0e16" />
+<meta name="description" content="Synoptic — weather into watercolor sky and poem" />
+<title>Synoptic</title>
+<style>
+  :root {
+    --bg: #0a0e16;
+    --panel: rgba(10, 14, 22, 0.72);
+    --panel-solid: #121826;
+    --ink: #e8eef8;
+    --muted: #8b97ab;
+    --accent: #9ec5ff;
+    --accent-soft: rgba(158, 197, 255, 0.18);
+    --border: rgba(158, 197, 255, 0.22);
+    --danger: #ffb4a8;
+    --radius: 14px;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+  canvas#sky {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+  }
+  .topbar, .bottombar {
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .topbar {
+    padding: calc(12px + env(safe-area-inset-top)) 14px 0 14px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .brand, .hud-card, .controls, .poem-card, .status-pill {
+    pointer-events: auto;
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.28);
+  }
+  .brand {
+    padding: 10px 14px;
+    min-width: min(220px, 100%);
+  }
+  .brand h1 {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .brand p {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .hud-card {
+    padding: 10px 14px;
+    text-align: right;
+    min-width: 160px;
+  }
+  .hud-card .place {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .hud-card .temp {
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 2px 0;
+  }
+  .hud-card .meta {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 16px;
+    pointer-events: none;
+  }
+  .poem-card {
+    max-width: min(480px, 92vw);
+    padding: 22px 24px;
+    text-align: center;
+    pointer-events: auto;
+  }
+  .poem-card .label {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    opacity: 0.9;
+  }
+  .poem-card .lines {
+    font-family: var(--serif);
+    font-size: clamp(16px, 3.6vw, 22px);
+    line-height: 1.55;
+    font-weight: 400;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .poem-card .lines span {
+    display: block;
+  }
+  .bottombar {
+    padding: 0 14px calc(14px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    align-items: center;
+  }
+  .search-wrap {
+    position: relative;
+    flex: 1 1 200px;
+    min-width: 160px;
+  }
+  .search-wrap input, .city-select {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  .search-wrap input:focus, .city-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .city-select {
+    flex: 0 1 180px;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 11px) calc(50% - 3px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 28px;
+  }
+  .suggestions {
+    position: absolute;
+    left: 0; right: 0; top: calc(100% + 4px);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 20;
+    display: none;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .suggestions.open { display: block; }
+  .suggestions button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    color: var(--ink);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .suggestions button:hover,
+  .suggestions button:focus {
+    background: var(--accent-soft);
+    outline: none;
+  }
+  .suggestions .sub {
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.06);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: linear-gradient(180deg, rgba(158,197,255,0.28), rgba(158,197,255,0.12));
+    border-color: rgba(158,197,255,0.45);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: wait;
+  }
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    pointer-events: none;
+  }
+  .status-pill {
+    pointer-events: auto;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--muted);
+    border-radius: 999px;
+  }
+  .status-pill.error { color: var(--danger); border-color: rgba(255,180,168,0.35); }
+  .status-pill.ok { color: #b7f0c8; }
+  @media (max-width: 560px) {
+    .hud-card { text-align: left; width: 100%; }
+    .topbar { flex-direction: column; }
+    .controls { padding: 8px; }
+    .poem-card { padding: 16px 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="sky" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>Synoptic</h1>
+      <p>Weather into watercolor sky &amp; poem</p>
+    </div>
+    <div class="hud-card" id="hud" aria-live="polite">
+      <div class="place" id="hud-place">—</div>
+      <div class="temp" id="hud-temp">—</div>
+      <div class="meta" id="hud-meta">Pick a city or try Demo</div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <article class="poem-card" id="poem-card">
+      <div class="label">Weather poem</div>
+      <div class="lines" id="poem-lines">
+        <span>Waiting for the sky…</span>
+      </div>
+    </article>
+  </main>
+
+  <footer class="bottombar">
+    <div class="controls">
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="Search city…" autocomplete="off" spellcheck="false" />
+        <div class="suggestions" id="suggestions" role="listbox"></div>
+      </div>
+      <select class="city-select" id="curated" aria-label="Curated cities">
+        <option value="">Curated cities…</option>
+      </select>
+      <button class="btn primary" id="btn-refresh" type="button">Refresh</button>
+      <button class="btn" id="btn-demo" type="button">Demo</button>
+      <button class="btn" id="btn-save" type="button">Save PNG</button>
+    </div>
+    <div class="status-row">
+      <div class="status-pill" id="status">Offline-friendly · Open-Meteo</div>
+      <div class="status-pill" id="seed-pill" title="Deterministic seed">seed —</div>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ——— Curated cities ———
+  const CURATED = [
+    { name: "Reykjavík", country: "Iceland", latitude: 64.1466, longitude: -21.9426 },
+    { name: "Tromsø", country: "Norway", latitude: 69.6492, longitude: 18.9553 },
+    { name: "Kyoto", country: "Japan", latitude: 35.0116, longitude: 135.7681 },
+    { name: "Marrakesh", country: "Morocco", latitude: 31.6295, longitude: -7.9811 },
+    { name: "Patagonia", country: "Argentina", latitude: -49.3280, longitude: -72.9090, admin1: "El Calafate" },
+    { name: "Singapore", country: "Singapore", latitude: 1.3521, longitude: 103.8198 },
+    { name: "Cape Town", country: "South Africa", latitude: -33.9249, longitude: 18.4241 },
+    { name: "Anchorage", country: "United States", latitude: 61.2181, longitude: -149.9003 },
+    { name: "Santorini", country: "Greece", latitude: 36.3932, longitude: 25.4615 },
+    { name: "Ushuaia", country: "Argentina", latitude: -54.8019, longitude: -68.3030 },
+    { name: "Chicago", country: "United States", latitude: 41.8781, longitude: -87.6298 },
+    { name: "Hobart", country: "Australia", latitude: -42.8821, longitude: 147.3272 }
+  ];
+
+  // Baked demo reading — soft dusk over a temperate coast
+  const DEMO = {
+    place: { name: "Harbor Dusk", country: "Demo", latitude: 47.6, longitude: -122.3 },
+    current: {
+      temperature_2m: 17.4,
+      relative_humidity_2m: 64,
+      apparent_temperature: 16.1,
+      precipitation: 0,
+      weather_code: 2,
+      cloud_cover: 38,
+      pressure_msl: 1016.8,
+      wind_speed_10m: 12.2,
+      wind_direction_10m: 255,
+      is_day: 0
+    }
+  };
+
+  // ——— WMO weather codes → plain words ———
+  function weatherWords(code, isDay) {
+    const map = {
+      0: isDay ? "clear sky" : "clear night",
+      1: isDay ? "mainly clear" : "mostly clear night",
+      2: "partly cloudy",
+      3: "overcast",
+      45: "fog",
+      48: "rime fog",
+      51: "light drizzle",
+      53: "drizzle",
+      55: "dense drizzle",
+      56: "freezing drizzle",
+      57: "heavy freezing drizzle",
+      61: "light rain",
+      63: "rain",
+      65: "heavy rain",
+      66: "freezing rain",
+      67: "heavy freezing rain",
+      71: "light snow",
+      73: "snow",
+      75: "heavy snow",
+      77: "snow grains",
+      80: "rain showers",
+      81: "showers",
+      82: "violent showers",
+      85: "snow showers",
+      86: "heavy snow showers",
+      95: "thunderstorm",
+      96: "thunderstorm with hail",
+      99: "severe thunderstorm"
+    };
+    return map[code] || "shifting weather";
+  }
+
+  function windDir(deg) {
+    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return dirs[Math.round(((deg % 360) / 22.5)) % 16];
+  }
+
+  // ——— Seeded PRNG (mulberry32) ———
+  function hashStr(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function makeSeed(place, cur) {
+    const parts = [
+      (place.name || "").toLowerCase(),
+      Math.round(cur.temperature_2m * 2) / 2,
+      Math.round(cur.relative_humidity_2m),
+      Math.round(cur.cloud_cover),
+      Math.round(cur.weather_code),
+      Math.round(cur.wind_speed_10m),
+      Math.round(cur.wind_direction_10m / 10) * 10,
+      Math.round(cur.pressure_msl),
+      cur.is_day ? 1 : 0,
+      Math.round((cur.precipitation || 0) * 10) / 10
+    ].join("|");
+    return hashStr(parts);
+  }
+
+  function mulberry32(a) {
+    return function () {
+      let t = (a += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ——— Color helpers ———
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hsl(h, s, l, a) {
+    return a == null ? `hsl(${h} ${s}% ${l}%)` : `hsla(${h} ${s}% ${l}% / ${a})`;
+  }
+
+  function paletteFromWeather(cur, rng) {
+    const temp = cur.temperature_2m;
+    const isDay = !!cur.is_day;
+    const cloud = cur.cloud_cover / 100;
+    const humid = cur.relative_humidity_2m / 100;
+    const code = cur.weather_code;
+
+    // Temperature → hue bias: cold blue/violet, mild teal, warm amber/rose
+    let baseHue;
+    if (temp < 0) baseHue = lerp(250, 220, clamp((temp + 20) / 20, 0, 1));
+    else if (temp < 12) baseHue = lerp(220, 200, (temp) / 12);
+    else if (temp < 22) baseHue = lerp(200, 35, (temp - 12) / 10);
+    else baseHue = lerp(35, 12, clamp((temp - 22) / 15, 0, 1));
+
+    if (!isDay) {
+      // Pull evenings toward indigo / violet rather than green
+      if (temp >= 12) baseHue = lerp(265, 300, clamp((temp - 12) / 20, 0, 1));
+      else baseHue = lerp(230, 265, clamp(temp / 12, 0, 1));
+    }
+
+    // Day/night lightness
+    const zenithL = isDay ? lerp(62, 48, cloud) : lerp(18, 10, cloud);
+    const horizonL = isDay
+      ? lerp(78, 55, cloud * 0.7)
+      : (temp > 18 ? 28 : 16);
+    const groundL = isDay ? lerp(28, 18, cloud) : 6;
+
+    // Warmth nudge for dusk-feeling nights / hot days
+    const sat = clamp((isDay ? 48 : 36) - cloud * 18 + (temp > 25 ? 8 : 0) - humid * 6, 12, 62);
+
+    // Precipitation cools saturation slightly
+    const precip = code >= 51;
+    const snow = code >= 71 && code < 80 || code === 77 || code >= 85;
+    const storm = code >= 95;
+
+    return {
+      baseHue,
+      sat: sat * (precip ? 0.85 : 1) * (storm ? 0.7 : 1),
+      zenithL: zenithL * (storm ? 0.75 : 1),
+      horizonL: snow ? horizonL + 8 : horizonL,
+      groundL,
+      isDay,
+      cloud,
+      humid,
+      precip,
+      snow,
+      storm,
+      wind: cur.wind_speed_10m,
+      windDir: cur.wind_direction_10m,
+      code,
+      accentShift: (rng() - 0.5) * 18
+    };
+  }
+
+  // ——— Canvas sky painter ———
+  function paintSky(canvas, place, cur, seed) {
+    const rng = mulberry32(seed);
+    const pal = paletteFromWeather(cur, rng);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // Base vertical gradient (zenith → horizon → ground haze)
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    const h0 = (pal.baseHue + pal.accentShift + 360) % 360;
+    const h1 = (h0 + (pal.isDay ? 28 : -18) + 360) % 360;
+    const h2 = (h0 + (pal.isDay ? 55 : 30) + 360) % 360;
+    g.addColorStop(0, hsl(h0, pal.sat * 0.7, pal.zenithL));
+    g.addColorStop(0.45, hsl(h1, pal.sat, lerp(pal.zenithL, pal.horizonL, 0.55)));
+    g.addColorStop(0.72, hsl(h2, pal.sat * 1.05, pal.horizonL));
+    g.addColorStop(1, hsl((h2 + 20) % 360, pal.sat * 0.55, pal.groundL));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    // Soft color washes (watercolor blooms)
+    const blooms = 5 + Math.floor(rng() * 4);
+    for (let i = 0; i < blooms; i++) {
+      const cx = rng() * w;
+      const cy = rng() * h * 0.75;
+      const r = (0.15 + rng() * 0.45) * Math.max(w, h);
+      const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      const hh = (h0 + rng() * 50 - 10 + 360) % 360;
+      const a = 0.08 + rng() * 0.14;
+      rg.addColorStop(0, hsl(hh, pal.sat * 0.9, pal.isDay ? 70 : 35, a));
+      rg.addColorStop(1, hsl(hh, pal.sat * 0.4, pal.zenithL, 0));
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Humidity haze veil
+    if (pal.humid > 0.35) {
+      const hz = ctx.createLinearGradient(0, h * 0.4, 0, h);
+      const ha = (pal.humid - 0.35) * 0.45;
+      hz.addColorStop(0, hsl(h1, 20, pal.isDay ? 80 : 30, 0));
+      hz.addColorStop(1, hsl(h1, 15, pal.isDay ? 85 : 25, ha));
+      ctx.fillStyle = hz;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Cloud bands from cloud_cover
+    const bands = Math.floor(pal.cloud * 10) + (pal.cloud > 0.2 ? 2 : 0);
+    const windRad = (pal.windDir * Math.PI) / 180;
+    const driftX = Math.cos(windRad);
+    const driftY = Math.sin(windRad) * 0.25;
+    ctx.save();
+    for (let i = 0; i < bands; i++) {
+      const y = h * (0.08 + rng() * 0.62);
+      const bandH = h * (0.04 + rng() * 0.12) * (0.6 + pal.cloud);
+      const opacity = (0.08 + pal.cloud * 0.22) * (pal.isDay ? 1 : 0.7);
+      const blobs = 4 + Math.floor(rng() * 6);
+      for (let b = 0; b < blobs; b++) {
+        const bx = ((rng() + i * 0.13) % 1) * w + driftX * w * 0.05 * (rng() - 0.5);
+        const by = y + (rng() - 0.5) * bandH + driftY * h * 0.04;
+        const rx = w * (0.08 + rng() * 0.22);
+        const ry = bandH * (0.5 + rng() * 0.9);
+        const cg = ctx.createRadialGradient(bx, by, 0, bx, by, Math.max(rx, ry));
+        const cl = pal.isDay ? lerp(92, 70, pal.cloud) : lerp(42, 22, pal.cloud);
+        cg.addColorStop(0, hsl(h0, 8, cl, opacity));
+        cg.addColorStop(0.55, hsl(h0, 10, cl - 8, opacity * 0.55));
+        cg.addColorStop(1, hsl(h0, 8, cl, 0));
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.ellipse(bx, by, rx, ry, driftX * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Wind streaks
+    if (pal.wind > 8) {
+      const streaks = Math.min(40, Math.floor(pal.wind * 0.9));
+      ctx.save();
+      ctx.globalCompositeOperation = "soft-light";
+      for (let i = 0; i < streaks; i++) {
+        const x = rng() * w;
+        const y = rng() * h * 0.7;
+        const len = (20 + pal.wind * 2 + rng() * 40) * dpr;
+        const thick = (0.6 + rng() * 1.4) * dpr;
+        ctx.strokeStyle = hsl(h0, 20, pal.isDay ? 90 : 55, 0.08 + Math.min(pal.wind, 40) / 200);
+        ctx.lineWidth = thick;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(windRad) * len, y + Math.sin(windRad) * len * 0.35);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Precipitation hints
+    if (pal.precip || pal.snow || cur.precipitation > 0) {
+      const drops = pal.storm ? 180 : pal.snow ? 120 : 90;
+      ctx.save();
+      for (let i = 0; i < drops; i++) {
+        const x = rng() * w;
+        const y = rng() * h;
+        if (pal.snow) {
+          const r = (0.8 + rng() * 2.2) * dpr;
+          ctx.fillStyle = hsl(210, 10, 95, 0.25 + rng() * 0.35);
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          const len = (6 + rng() * 14 + pal.wind * 0.15) * dpr;
+          ctx.strokeStyle = hsl(200, 30, pal.isDay ? 80 : 70, 0.12 + rng() * 0.2);
+          ctx.lineWidth = (0.7 + rng()) * dpr;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + driftX * 4 * dpr, y + len);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Mist / fog overlay for low codes
+    if (cur.weather_code === 45 || cur.weather_code === 48 || (pal.humid > 0.85 && pal.cloud > 0.7)) {
+      const mist = ctx.createLinearGradient(0, 0, 0, h);
+      mist.addColorStop(0, hsl(210, 10, pal.isDay ? 80 : 40, 0.08));
+      mist.addColorStop(0.5, hsl(210, 8, pal.isDay ? 85 : 35, 0.22));
+      mist.addColorStop(1, hsl(210, 5, pal.isDay ? 75 : 30, 0.35));
+      ctx.fillStyle = mist;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Storm darkening veil
+    if (pal.storm) {
+      ctx.fillStyle = hsl(240, 30, 8, 0.28);
+      ctx.fillRect(0, 0, w, h);
+      // lightning hint glow (deterministic position)
+      const lx = w * (0.2 + rng() * 0.6);
+      const ly = h * (0.05 + rng() * 0.2);
+      const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, w * 0.35);
+      lg.addColorStop(0, hsl(220, 40, 80, 0.18));
+      lg.addColorStop(1, hsl(240, 30, 20, 0));
+      ctx.fillStyle = lg;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Soft vignette for craft
+    const vig = ctx.createRadialGradient(w * 0.5, h * 0.45, h * 0.2, w * 0.5, h * 0.5, h * 0.85);
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(0,0,0,0.28)");
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, w, h);
+
+    // Fine grain (watercolor paper feel)
+    const grainCount = Math.floor((w * h) / (1400 / dpr));
+    ctx.save();
+    ctx.globalCompositeOperation = "overlay";
+    for (let i = 0; i < grainCount; i++) {
+      const x = rng() * w;
+      const y = rng() * h;
+      ctx.fillStyle = rng() > 0.5 ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.04)";
+      ctx.fillRect(x, y, dpr, dpr);
+    }
+    ctx.restore();
+
+    return pal;
+  }
+
+  // ——— Deterministic poem ———
+  const LEX = {
+    openings: [
+      "The sky keeps a quiet ledger",
+      "Over the roofs, the air leans",
+      "A low pressure writes itself",
+      "Light arrives in soft installments",
+      "Wind recounts the same mile",
+      "Clouds practice their slow grammar",
+      "The horizon holds its breath",
+      "Weather threads through the streets"
+    ],
+    middles: [
+      "where humidity braids the distance",
+      "and temperature settles like ink",
+      "while pressure rounds the corners",
+      "as wind stitches pale seams",
+      "and cloud-cover softens every edge",
+      "where rain rehearses its thin vowels",
+      "and cold brightens the silence",
+      "while heat loosens the blue"
+    ],
+    images_clear: [
+      "a polished coin of daylight",
+      "glass-blue distance, almost ringing",
+      "shadows cut clean as paper",
+      "the sun's thin gold coin"
+    ],
+    images_cloud: [
+      "a woolen ceiling, barely moving",
+      "pewter layers stacked to the rim",
+      "cotton dragged across wet slate",
+      "a quilt of unfinished gray"
+    ],
+    images_rain: [
+      "needles of silver on the panes",
+      "streets learning a softer alphabet",
+      "the smell of iron and wet stone",
+      "gutters speaking in short lines"
+    ],
+    images_snow: [
+      "white commas falling without hurry",
+      "fields erased to a quiet draft",
+      "boots writing temporary glyphs",
+      "a hush thick enough to hold"
+    ],
+    images_storm: [
+      "a bruise of thunder inland",
+      "lightning's brief white signature",
+      "the air coiled, then released",
+      "darkness practicing its drum"
+    ],
+    images_fog: [
+      "lamps blurred to soft coins",
+      "distance folded into itself",
+      "edges borrowed from memory",
+      "a white room without walls"
+    ],
+    images_night: [
+      "streetlights pooling like small moons",
+      "the city's hush under indigo",
+      "windows lit like patient stars",
+      "darkness thinned by sodium glow"
+    ],
+    closings: [
+      "and still the day continues.",
+      "nothing asks to be named.",
+      "we walk inside its sentence.",
+      "the map redraws itself.",
+      "then silence, almost kind.",
+      "as if the world were listening.",
+      "measure enough for one breath.",
+      "and the poem ends without ending."
+    ],
+    wind_soft: ["a rumor of air", "barely a sigh", "air almost still"],
+    wind_mid: ["a steady crosswise push", "wind with a workman's pace", "air that won't sit down"],
+    wind_hard: ["a hard unbroken fetch", "wind sharpening the eaves", "gusts rewriting the wires"]
+  };
+
+  function pick(rng, arr) {
+    return arr[Math.floor(rng() * arr.length) % arr.length];
+  }
+
+  function buildPoem(place, cur, seed) {
+    const rng = mulberry32(seed ^ 0xA5A5A5A5);
+    const code = cur.weather_code;
+    const isDay = !!cur.is_day;
+    const wind = cur.wind_speed_10m;
+    const temp = cur.temperature_2m;
+
+    let imagePool = LEX.images_cloud;
+    if (code === 0 || code === 1) imagePool = LEX.images_clear;
+    else if (code === 45 || code === 48) imagePool = LEX.images_fog;
+    else if (code >= 71 && code < 80 || code === 77 || code >= 85) imagePool = LEX.images_snow;
+    else if (code >= 95) imagePool = LEX.images_storm;
+    else if (code >= 51) imagePool = LEX.images_rain;
+    else if (cur.cloud_cover < 35) imagePool = LEX.images_clear;
+
+    if (!isDay && rng() > 0.4) {
+      // blend a night image sometimes
+      imagePool = imagePool.concat(LEX.images_night);
+    }
+
+    const windPhrase = wind < 10 ? pick(rng, LEX.wind_soft)
+      : wind < 25 ? pick(rng, LEX.wind_mid)
+      : pick(rng, LEX.wind_hard);
+
+    const tempPhrase = temp < 0 ? "frost at the margins"
+      : temp < 8 ? "a cool restraint"
+      : temp < 18 ? "a temperate hush"
+      : temp < 28 ? "a warm lingering"
+      : "heat like held glass";
+
+    const wet = code >= 51 || (cur.precipitation || 0) > 0;
+    const middles = LEX.middles.filter((m) => {
+      if (!wet && /rain|drizzle/.test(m)) return false;
+      if (temp < 20 && /heat/.test(m)) return false;
+      if (temp > 10 && /cold/.test(m)) return false;
+      return true;
+    });
+
+    const lineCount = 3 + Math.floor(rng() * 3); // 3–5
+    const lines = [];
+    lines.push(pick(rng, LEX.openings) + ".");
+    lines.push(pick(rng, middles.length ? middles : LEX.middles) + ",");
+    lines.push(pick(rng, imagePool) + ",");
+    if (lineCount >= 4) {
+      lines.push(windPhrase + " — " + tempPhrase + ".");
+    }
+    if (lineCount >= 5) {
+      lines.push(pick(rng, LEX.closings));
+    } else if (lineCount === 3) {
+      // fold closing into last image line
+      lines[2] = lines[2].replace(/,$/, "") + " — " + pick(rng, LEX.closings).replace(/\.$/, "") + ".";
+    } else {
+      lines.push(pick(rng, LEX.closings));
+    }
+
+    // Light place echo sometimes (not cheesy)
+    if (rng() > 0.55 && place && place.name) {
+      const idx = Math.min(lines.length - 1, 1 + Math.floor(rng() * (lines.length - 1)));
+      if (!/\./.test(lines[idx].slice(-1)) || lines[idx].endsWith(".")) {
+        // weave place softly into opening variant occasionally on line 0 only
+      }
+      if (rng() > 0.7) {
+        lines[0] = lines[0].replace(/\.$/, "") + " above " + place.name + ".";
+      }
+    }
+
+    return lines.slice(0, lineCount);
+  }
+
+  // ——— DOM ———
+  const canvas = document.getElementById("sky");
+  const hudPlace = document.getElementById("hud-place");
+  const hudTemp = document.getElementById("hud-temp");
+  const hudMeta = document.getElementById("hud-meta");
+  const poemLines = document.getElementById("poem-lines");
+  const statusEl = document.getElementById("status");
+  const seedPill = document.getElementById("seed-pill");
+  const searchInput = document.getElementById("search");
+  const suggestions = document.getElementById("suggestions");
+  const curated = document.getElementById("curated");
+  const btnRefresh = document.getElementById("btn-refresh");
+  const btnDemo = document.getElementById("btn-demo");
+  const btnSave = document.getElementById("btn-save");
+
+  let state = {
+    place: null,
+    current: null,
+    seed: 0,
+    mode: "idle", // idle | live | demo
+    loading: false
+  };
+
+  CURATED.forEach((c, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = c.name + (c.country ? " · " + c.country : "");
+    curated.appendChild(opt);
+  });
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.classList.remove("error", "ok");
+    if (kind) statusEl.classList.add(kind);
+  }
+
+  function renderHUD(place, cur) {
+    const unit = "°C";
+    hudPlace.textContent = place.name + (place.country ? ", " + place.country : "");
+    hudTemp.textContent = (Math.round(cur.temperature_2m * 10) / 10) + unit;
+    const feels = Math.round(cur.apparent_temperature * 10) / 10;
+    const words = weatherWords(cur.weather_code, cur.is_day);
+    const wind = Math.round(cur.wind_speed_10m) + " km/h " + windDir(cur.wind_direction_10m);
+    hudMeta.innerHTML =
+      words + "<br>" +
+      "feels " + feels + unit + " · " + cur.relative_humidity_2m + "% rh<br>" +
+      "wind " + wind + " · cloud " + cur.cloud_cover + "%";
+  }
+
+  function renderPoem(lines) {
+    poemLines.innerHTML = "";
+    lines.forEach((ln) => {
+      const s = document.createElement("span");
+      s.textContent = ln;
+      poemLines.appendChild(s);
+    });
+  }
+
+  function applyReading(place, current, mode) {
+    const seed = makeSeed(place, current);
+    state = { place, current, seed, mode, loading: false };
+    paintSky(canvas, place, current, seed);
+    renderHUD(place, current);
+    renderPoem(buildPoem(place, current, seed));
+    seedPill.textContent = "seed " + seed.toString(16);
+    setStatus(mode === "demo" ? "Demo weather · offline" : "Live · Open-Meteo", mode === "demo" ? "" : "ok");
+    btnRefresh.disabled = false;
+  }
+
+  async function fetchWeather(place) {
+    const url = "https://api.open-meteo.com/v1/forecast"
+      + "?latitude=" + encodeURIComponent(place.latitude)
+      + "&longitude=" + encodeURIComponent(place.longitude)
+      + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,is_day";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Forecast HTTP " + res.status);
+    const data = await res.json();
+    if (!data.current) throw new Error("No current weather");
+    return data.current;
+  }
+
+  async function loadPlace(place, mode) {
+    if (state.loading) return;
+    state.loading = true;
+    btnRefresh.disabled = true;
+    setStatus("Fetching sky…");
+    try {
+      let current;
+      if (mode === "demo") {
+        current = DEMO.current;
+        place = DEMO.place;
+      } else {
+        current = await fetchWeather(place);
+      }
+      applyReading(place, current, mode || "live");
+    } catch (err) {
+      console.error(err);
+      setStatus("Fetch failed — try Demo", "error");
+      btnRefresh.disabled = false;
+      state.loading = false;
+    }
+  }
+
+  // Geocoding search
+  let searchTimer = null;
+  let lastResults = [];
+
+  function hideSuggestions() {
+    suggestions.classList.remove("open");
+    suggestions.innerHTML = "";
+  }
+
+  function showSuggestions(results) {
+    lastResults = results;
+    suggestions.innerHTML = "";
+    if (!results.length) {
+      hideSuggestions();
+      return;
+    }
+    results.forEach((r, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("role", "option");
+      const label = r.name + (r.admin1 ? ", " + r.admin1 : "");
+      btn.innerHTML = label + ' <span class="sub">' + (r.country || "") + "</span>";
+      btn.addEventListener("click", () => {
+        searchInput.value = r.name;
+        hideSuggestions();
+        loadPlace({
+          name: r.name,
+          country: r.country || "",
+          latitude: r.latitude,
+          longitude: r.longitude
+        }, "live");
+      });
+      suggestions.appendChild(btn);
+    });
+    suggestions.classList.add("open");
+  }
+
+  async function geocode(q) {
+    const url = "https://geocoding-api.open-meteo.com/v1/search?name="
+      + encodeURIComponent(q) + "&count=5&language=en&format=json";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Geocode HTTP " + res.status);
+    const data = await res.json();
+    return data.results || [];
+  }
+
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim();
+    curated.value = "";
+    clearTimeout(searchTimer);
+    if (q.length < 2) {
+      hideSuggestions();
+      return;
+    }
+    searchTimer = setTimeout(async () => {
+      try {
+        const results = await geocode(q);
+        showSuggestions(results);
+      } catch (e) {
+        setStatus("Search offline — use curated or Demo", "error");
+        hideSuggestions();
+      }
+    }, 280);
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideSuggestions();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (lastResults.length) {
+        const r = lastResults[0];
+        searchInput.value = r.name;
+        hideSuggestions();
+        loadPlace({
+          name: r.name,
+          country: r.country || "",
+          latitude: r.latitude,
+          longitude: r.longitude
+        }, "live");
+      }
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-wrap")) hideSuggestions();
+  });
+
+  curated.addEventListener("change", () => {
+    const i = curated.value;
+    if (i === "") return;
+    const c = CURATED[Number(i)];
+    searchInput.value = c.name;
+    hideSuggestions();
+    loadPlace(c, "live");
+  });
+
+  btnRefresh.addEventListener("click", () => {
+    if (state.mode === "demo") {
+      applyReading(DEMO.place, DEMO.current, "demo");
+      return;
+    }
+    if (state.place && state.mode === "live") {
+      loadPlace(state.place, "live");
+    } else {
+      setStatus("Pick a city or Demo first");
+    }
+  });
+
+  btnDemo.addEventListener("click", () => {
+    curated.value = "";
+    searchInput.value = DEMO.place.name;
+    hideSuggestions();
+    applyReading(DEMO.place, DEMO.current, "demo");
+  });
+
+  btnSave.addEventListener("click", () => {
+    if (!state.current) {
+      setStatus("Nothing to save yet");
+      return;
+    }
+    // Composite sky + poem overlay into download
+    const out = document.createElement("canvas");
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext("2d");
+    ctx.drawImage(canvas, 0, 0);
+
+    // Poem overlay
+    const dpr = out.width / canvas.clientWidth;
+    const lines = buildPoem(state.place, state.current, state.seed);
+    ctx.fillStyle = "rgba(10,14,22,0.45)";
+    const boxW = Math.min(out.width * 0.72, 520 * dpr);
+    const lineH = 28 * dpr;
+    const boxH = (lines.length * lineH + 56 * dpr);
+    const bx = (out.width - boxW) / 2;
+    const by = (out.height - boxH) / 2;
+    roundRect(ctx, bx, by, boxW, boxH, 14 * dpr);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(158,197,255,0.9)";
+    ctx.font = (11 * dpr) + "px " + getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = "center";
+    ctx.fillText("WEATHER POEM", out.width / 2, by + 28 * dpr);
+
+    ctx.fillStyle = "#e8eef8";
+    ctx.font = (18 * dpr) + "px Georgia, serif";
+    lines.forEach((ln, i) => {
+      ctx.fillText(ln, out.width / 2, by + 56 * dpr + i * lineH);
+    });
+
+    // HUD strip
+    ctx.fillStyle = "rgba(10,14,22,0.55)";
+    roundRect(ctx, 20 * dpr, 20 * dpr, 260 * dpr, 72 * dpr, 12 * dpr);
+    ctx.fill();
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#9ec5ff";
+    ctx.font = "600 " + (12 * dpr) + "px " + getComputedStyle(document.body).fontFamily;
+    ctx.fillText("SYNOPTIC", 34 * dpr, 42 * dpr);
+    ctx.fillStyle = "#e8eef8";
+    ctx.font = (14 * dpr) + "px " + getComputedStyle(document.body).fontFamily;
+    ctx.fillText(state.place.name, 34 * dpr, 62 * dpr);
+    ctx.fillStyle = "#8b97ab";
+    ctx.font = (11 * dpr) + "px " + getComputedStyle(document.body).fontFamily;
+    ctx.fillText(
+      (Math.round(state.current.temperature_2m * 10) / 10) + "°C · " + weatherWords(state.current.weather_code, state.current.is_day),
+      34 * dpr, 80 * dpr
+    );
+
+    const a = document.createElement("a");
+    const slug = (state.place.name || "sky").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    a.download = "synoptic-" + slug + ".png";
+    a.href = out.toDataURL("image/png");
+    a.click();
+    setStatus("PNG saved", "ok");
+  });
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (state.current) paintSky(canvas, state.place, state.current, state.seed);
+    }, 80);
+  });
+
+  // Boot: ?demo=1 or default demo for file/offline friendliness; ?city=Name optional
+  function boot() {
+    const params = new URLSearchParams(location.search);
+    if (params.get("demo") === "1" || params.has("demo")) {
+      applyReading(DEMO.place, DEMO.current, "demo");
+      return;
+    }
+    const cityQ = params.get("city");
+    if (cityQ) {
+      const found = CURATED.find((c) => c.name.toLowerCase() === cityQ.toLowerCase());
+      if (found) {
+        searchInput.value = found.name;
+        loadPlace(found, "live");
+        return;
+      }
+      searchInput.value = cityQ;
+      geocode(cityQ).then((results) => {
+        if (results[0]) {
+          loadPlace({
+            name: results[0].name,
+            country: results[0].country || "",
+            latitude: results[0].latitude,
+            longitude: results[0].longitude
+          }, "live");
+        } else {
+          applyReading(DEMO.place, DEMO.current, "demo");
+        }
+      }).catch(() => applyReading(DEMO.place, DEMO.current, "demo"));
+      return;
+    }
+    // Default: demo so first paint is immediate & offline-safe
+    applyReading(DEMO.place, DEMO.current, "demo");
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
