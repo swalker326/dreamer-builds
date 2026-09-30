@@ -325,10 +325,6 @@
   const canvas = document.getElementById("soil");
   const ctx = canvas.getContext("2d", { alpha: false });
 
-  // Offscreen layer for persistent hyphae (cheap trails)
-  const trail = document.createElement("canvas");
-  const tctx = trail.getContext("2d");
-
   const elTips = document.getElementById("sTips");
   const elHyphae = document.getElementById("sHyphae");
   const elNutrients = document.getElementById("sNutrients");
@@ -354,10 +350,14 @@
   let frame = 0;
 
   let oldW = 0, oldH = 0;
-  let MAX_TIPS = 900;      // lowered on small / touch screens in resize()
-  let MAX_NUTRIENTS = 80;
-  let MOTE_COUNT = 48;
   const isCoarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  // Phones / small screens get lighter defaults — but no hard bounds on growth
+  const LIGHT = isCoarse || Math.min(innerWidth, innerHeight) < 600;
+  const MAX_TIPS = Infinity;                      // no population cap (endless growth)
+  const MAX_NUTRIENTS = LIGHT ? 1500 : 5000;      // oldest drop off only past this
+  const SIM_BUDGET = LIGHT ? 700 : 1800;          // tips stepped per frame, round-robin (soft perf guard)
+  const NORM_TIPS = 900;                          // audio normalisation only
+  const MOTE_COUNT = LIGHT ? 28 : 48;
   const SENSE_R = 160;
   const ABSORB_R = 10;
 
@@ -366,106 +366,42 @@
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = Math.max(1, Math.round(window.innerWidth));
     H = Math.max(1, Math.round(window.innerHeight));
-    // Performance budget: small screens / phones get fewer tips and motes
-    const small = Math.min(W, H) < 600 || isCoarse;
-    MAX_TIPS = small ? 480 : 900;
-    MAX_NUTRIENTS = small ? 50 : 80;
-    MOTE_COUNT = small ? 28 : 48;
-    if (tips.length > MAX_TIPS) {
-      tips.sort((a, b) => b.energy - a.energy);
-      tips.length = MAX_TIPS;
-    }
-    if (nutrients.length > MAX_NUTRIENTS) nutrients.splice(0, nutrients.length - MAX_NUTRIENTS);
-    HIST_CAP = small ? 160000 : 400000;
-    HIST_LOW = small ? 100000 : 260000;
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = W + "px";
     canvas.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    if (!WW) {
-      WW = W; WH = H;
-      allocWorld();
-      setFit();
-    } else if (oldW) {
-      // Keep the world point at screen centre and the zoom relative to "fit"
-      const rel = view.s / fitS;
-      const cwx = (oldW / 2 - view.tx) / view.s, cwy = (oldH / 2 - view.ty) / view.s;
-      fitS = Math.min(W / WW, H / WH);
-      view.s = fitS * rel;
-      view.tx = W / 2 - cwx * view.s;
-      view.ty = H / 2 - cwy * view.s;
-      clampView();
+    if (oldW) {
+      // keep the world point at the screen centre; zoom unchanged (no world bounds)
+      const cx = (oldW / 2 - view.tx) / view.s, cy = (oldH / 2 - view.ty) / view.s;
+      view.tx = W / 2 - cx * view.s;
+      view.ty = H / 2 - cy * view.s;
     }
     for (const c of [crisp, spareCrisp]) { c.width = canvas.width; c.height = canvas.height; }
+    for (const t of crispTiles) t.inCrisp = false;
+    crispTiles = [];
     crispValid = false;
     rebuild = null;
     lastViewChange = performance.now();
   }
 
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
   // ===========================================================================
-  // World, camera, and trail layers
-  //  - The sim lives in world units (CSS px of the viewport at the last Reset).
-  //  - view: screen = world * s + t. Zoom is clamped to 0.5x-8x of "fit".
-  //  - `trail`: world-res raster of ALL hyphae (what you see at 1x / mid-gesture).
-  //  - history: recent hyphae as merged vector segments (chunked by fade epoch).
-  //    When zoomed in and the view has settled, history is re-rendered at screen
-  //    resolution into `crisp` (sharp lines at any zoom), over `baked`, a
-  //    world-res raster holding only segments that have left the history.
+  // Camera over an unbounded world.  screen = world * s + t  (s clamped 0.05..8)
   // ===========================================================================
-  let WW = 0, WH = 0, RS = 1;       // world size, raster px per world unit
   const view = { s: 1, tx: 0, ty: 0 };
-  let fitS = 1;
-  const ZMIN = 0.5, ZMAX = 8, CRISP_Z = 1.12;
+  const ZMIN = 0.01, ZMAX = 8;   // 0.01x shows a 128k-px-wide sprawl on a laptop screen
   let lastViewChange = -1e9;
   let dotScale = 1;
   let viewAnim = null;
-  const baked = document.createElement("canvas"); const bctx = baked.getContext("2d");
-  let spareBaked = document.createElement("canvas");
-  let crisp = document.createElement("canvas");
-  let spareCrisp = document.createElement("canvas");
-  const crispView = { s: 0, tx: 0, ty: 0 };
-  let crispValid = false;
-  let rebuild = null;
-  let lastRebuildMs = 0, rebuilds = 0;
-  let HIST_CAP = 400000, HIST_LOW = 260000;
-  const CH_CAP = 16384;             // segments per chunk
-  const STRIDE = 7;                 // x0 y0 x1 y1 thickness glow tipId
-  const SLICE = (isCoarse || Math.min(innerWidth, innerHeight) < 600) ? 4096 : 8192;              // segments per time-sliced draw (chains break only at slice edges)
-  const MERGE2 = 2.5 * 2.5;         // merge tip steps into ~2.5 world-px segments
-  const ALPHA_MIN = 0.03;
-  let chunks = [], histSegs = 0, epoch = 0, bakeCursor = 0, evicting = false;
-  let blooms = [];
-  let pendingCrisp = [];            // [chunk, from] of segments to draw into crisp this frame
-
-  function allocWorld() {
-    RS = dpr;
-    for (const c of [trail, baked, spareBaked]) {
-      c.width = Math.ceil(WW * RS); c.height = Math.ceil(WH * RS);
-    }
+  const bb = { x0: 0, y0: 0, x1: 0, y1: 0 };     // bounding box of all growth + placements
+  function extendBB(x, y) {
+    if (x < bb.x0) bb.x0 = x; else if (x > bb.x1) bb.x1 = x;
+    if (y < bb.y0) bb.y0 = y; else if (y > bb.y1) bb.y1 = y;
   }
-  function clearHistory() {
-    chunks = []; histSegs = 0; bakeCursor = 0; evicting = false; blooms = []; pendingCrisp = [];
-    rebuild = null; crispValid = false;
-    for (const c of [trail, baked, spareBaked]) {
-      const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
-    }
-  }
-  const zoomRel = () => view.s / fitS;
-  function setFit() {
-    fitS = Math.min(W / WW, H / WH);
-    view.s = fitS;
-    view.tx = (W - WW * fitS) / 2;
-    view.ty = (H - WH * fitS) / 2;
-    markView();
-  }
-  function clampView() {
-    view.s = clamp(view.s, ZMIN * fitS, ZMAX * fitS);
-    // the screen centre must stay over the world
-    view.tx = clamp(view.tx, W / 2 - WW * view.s, W / 2);
-    view.ty = clamp(view.ty, H / 2 - WH * view.s, H / 2);
-  }
+  function clampView() { view.s = clamp(view.s, ZMIN, ZMAX); }
   function markView() {
     lastViewChange = performance.now();
     if (crispValid && (crispView.s !== view.s || crispView.tx !== view.tx || crispView.ty !== view.ty)) crispValid = false;
@@ -474,27 +410,32 @@
   function zoomAt(sx, sy, factor) {
     viewAnim = null;
     const wx = (sx - view.tx) / view.s, wy = (sy - view.ty) / view.s;
-    view.s = clamp(view.s * factor, ZMIN * fitS, ZMAX * fitS);
+    view.s = clamp(view.s * factor, ZMIN, ZMAX);
     view.tx = sx - wx * view.s;
     view.ty = sy - wy * view.s;
-    clampView(); markView();
+    markView();
   }
   function panBy(dx, dy) {
     viewAnim = null;
     view.tx += dx; view.ty += dy;
-    clampView(); markView();
+    markView();
   }
-  function animateFit() {
-    const s1 = Math.min(W / WW, H / WH);
-    viewAnim = { t0: performance.now(), dur: 280, a: { ...view },
-                 b: { s: s1, tx: (W - WW * s1) / 2, ty: (H - WH * s1) / 2 } };
+  // Fit frames the bounding box of everything that has grown (never zooms in past 1x)
+  function fitTarget() {
+    const pad = 80;
+    const bw = bb.x1 - bb.x0 + pad * 2, bh = bb.y1 - bb.y0 + pad * 2;
+    const availH = H * (W < 640 ? 0.62 : 0.78);
+    const s = clamp(Math.min((W * 0.94) / bw, availH / bh), ZMIN, 1);
+    const cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+    return { s, tx: W / 2 - cx * s, ty: H * (W < 640 ? 0.45 : 0.48) - cy * s };
   }
+  function setFit() { viewAnim = null; Object.assign(view, fitTarget()); markView(); }
+  function animateFit() { viewAnim = { t0: performance.now(), dur: 320, a: { ...view }, b: fitTarget() }; }
   function stepViewAnim(now) {
     if (!viewAnim) return;
     const a = viewAnim.a, b = viewAnim.b;
-    let k = clamp((now - viewAnim.t0) / viewAnim.dur, 0, 1);
+    const k = clamp((now - viewAnim.t0) / viewAnim.dur, 0, 1);
     const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-    // interpolate the world point at screen centre + log-zoom for a natural glide
     const s = Math.exp(Math.log(a.s) + (Math.log(b.s) - Math.log(a.s)) * e);
     const ca = { x: (W / 2 - a.tx) / a.s, y: (H / 2 - a.ty) / a.s };
     const cb = { x: (W / 2 - b.tx) / b.s, y: (H / 2 - b.ty) / b.s };
@@ -506,237 +447,557 @@
   const screenToWorld = (x, y) => ({ x: (x - view.tx) / view.s, y: (y - view.ty) / view.s });
   const worldToScreen = (x, y) => ({ x: x * view.s + view.tx, y: y * view.s + view.ty });
   function screenXN(wx) { return clamp((wx * view.s + view.tx) / Math.max(1, W), 0, 1); }
-
-  const alphaFor = (ep) => Math.pow(0.96, epoch - ep);
-  function fadeCanvas(c) {
-    if (!c.width) return;
-    const g = c.getContext("2d");
-    g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalCompositeOperation = "destination-out";
-    g.fillStyle = "rgba(0,0,0,0.04)";
-    g.fillRect(0, 0, c.width, c.height);
-    g.restore();
-  }
-
-  function recordSeg(x0, y0, x1, y1, th, glow, steps, id) {
-    let c = chunks[chunks.length - 1];
-    if (!c || c.epoch !== epoch || c.n >= CH_CAP) {
-      c = { epoch, buf: new Float32Array(CH_CAP * STRIDE), n: 0, sumL: 0 };
-      chunks.push(c);
-    }
-    const o = c.n * STRIDE, b = c.buf;
-    b[o] = x0; b[o + 1] = y0; b[o + 2] = x1; b[o + 3] = y1; b[o + 4] = th; b[o + 5] = glow; b[o + 6] = id;
-    c.sumL += Math.hypot(x1 - x0, y1 - y0) / Math.max(1, steps);
-    if (crispValid) {
-      const last = pendingCrisp[pendingCrisp.length - 1];
-      if (!last || last[0] !== c) pendingCrisp.push([c, c.n]);
-    }
-    c.n++; histSegs++;
-  }
-
-  // Batched stroke of history segments [from,to) of chunk c into context g
-  // (g's transform must already map world -> target pixels).
-  const TB = [0.85, 1.2, 1.6, 2.1];
-  const bucketPaths = new Array(8);
-  let sortKeys = new Float64Array(SLICE);
-  function drawSegs(g, c, from, to, alphaMul, cull) {
-    if (to <= from || alphaMul < 0.004) return;
-    for (let i = 0; i < 8; i++) bucketPaths[i] = null;
-    const b = c.buf;
-    // Order by (tip, time) so each tip's segments form one polyline with round
-    // joins: overlapping round caps would stack alpha into visible "beads".
-    const n = to - from;
-    if (sortKeys.length < n) sortKeys = new Float64Array(n);
-    const keys = sortKeys.subarray(0, n);
-    for (let i = 0; i < n; i++) keys[i] = b[(from + i) * STRIDE + 6] * 65536 + i;
-    keys.sort();
-    let pid = -1, pk = -1, px = 0, py = 0;
-    for (let j = 0; j < n; j++) {
-      const kk = keys[j], id = Math.floor(kk / 65536), i = from + (kk - id * 65536);
-      const o = i * STRIDE;
-      const x0 = b[o], y0 = b[o + 1], x1 = b[o + 2], y1 = b[o + 3];
-      if (cull && ((x0 < cull[0] && x1 < cull[0]) || (x0 > cull[2] && x1 > cull[2]) ||
-                   (y0 < cull[1] && y1 < cull[1]) || (y0 > cull[3] && y1 > cull[3]))) { pid = -1; continue; }
-      const th = b[o + 4];
-      const k = (th < 1.0 ? 0 : th < 1.4 ? 1 : th < 1.85 ? 2 : 3) + (b[o + 5] > 0.25 ? 4 : 0);
-      const pth = bucketPaths[k] || (bucketPaths[k] = new Path2D());
-      if (!(id === pid && k === pk && x0 === px && y0 === py)) pth.moveTo(x0, y0);
-      pth.lineTo(x1, y1);
-      pid = id; pk = k; px = x1; py = y1;
-    }
-    // Per-step raster strokes overlap (round caps every ~1px) and stack alpha;
-    // merged segments compensate with an equivalent alpha.
-    const L = Math.max(0.3, c.sumL / Math.max(1, c.n));
-    g.lineCap = "butt"; g.lineJoin = "round";
-    for (let k = 0; k < 8; k++) {
-      const pth = bucketPaths[k];
-      if (!pth) continue;
-      const th = TB[k & 3], gl = k >= 4 ? 0.55 : 0.05;
-      const wO = th * (3.2 + gl * 2), wC = th * (0.85 + gl * 0.4);
-      const aO = 1 - Math.pow(1 - (0.045 + gl * 0.08), Math.max(1, wO / L));
-      const aC = 1 - Math.pow(1 - (0.38 + gl * 0.35), Math.max(1, wC / L));
-      g.strokeStyle = `rgba(210, 190, 150, ${(aO * alphaMul).toFixed(4)})`;
-      g.lineWidth = wO; g.stroke(pth);
-      g.strokeStyle = `rgba(232, 220, 200, ${(aC * alphaMul).toFixed(4)})`;
-      g.lineWidth = wC; g.stroke(pth);
-    }
-  }
-  function drawBloom(g, bl, alphaMul) {
-    const a = alphaMul;
-    if (a < 0.004) return;
-    const gr = g.createRadialGradient(bl.x, bl.y, 0, bl.x, bl.y, bl.r);
-    gr.addColorStop(0, `rgba(240, 210, 140, ${0.22 * a})`);
-    gr.addColorStop(0.45, `rgba(210, 180, 120, ${0.08 * a})`);
-    gr.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = gr;
-    g.beginPath(); g.arc(bl.x, bl.y, bl.r, 0, Math.PI * 2); g.fill();
-  }
   function viewXform(g, v) { g.setTransform(dpr * v.s, 0, 0, dpr * v.s, dpr * v.tx, dpr * v.ty); }
   function viewCull(v) {
     const pad = 12;
     return [(-v.tx) / v.s - pad, (-v.ty) / v.s - pad, (W - v.tx) / v.s + pad, (H - v.ty) / v.s + pad];
   }
-  const crispShown = () => crispValid && zoomRel() > CRISP_Z;
 
-  function needEvict() {
-    if (chunks.length < 2) return false;
-    if (histSegs > HIST_CAP) evicting = true;
-    if (evicting && histSegs <= HIST_LOW) evicting = false;
-    return evicting || alphaFor(chunks[0].epoch) < ALPHA_MIN;
+  // ===========================================================================
+  // Tiled, unbounded hyphae store
+  //  - Level-0 tiles: 512x512 world units, raster at RS px/unit, created on demand
+  //    wherever a hypha is drawn. Every per-step stroke goes into each tile it touches.
+  //  - Pyramid levels 1..MAXL: each tile is a 2x-downsampled mosaic of 4 children,
+  //    rebuilt lazily (time-budgeted) when dirty — used when zoomed out.
+  //  - Each level-0 tile also keeps its merged vector segments, so when zoomed in
+  //    (raster too coarse) the visible tiles are re-rendered sharp into `crisp`.
+  //  - No time fade: history is permanent. Instead strokes laid through soil that's
+  //    already been explored are fainter, so dense areas don't wash out to white.
+  // ===========================================================================
+  const TILE = 512, RS = LIGHT ? 0.5 : 1,   // phones: 256px rasters (4x less memory); zoomed-in views re-render sharp from vectors anyway
+        TPX = TILE * RS, MAXL = 14, OFF = 524288;
+  const VSTRIDE = 8;                               // x0 y0 x1 y1 thickness glow tipId alpha
+  const VEC_TILE_CAP = LIGHT ? 60000 : 160000;     // per tile, after compaction -> raster-only
+  const VEC_BUDGET = LIGHT ? 1500000 : 6000000;    // total vector segs before far tiles go raster-only
+  const SLICE = LIGHT ? 4096 : 8192;
+  const MERGE2 = 2.5 * 2.5;
+  const PYR_BOOST = 0.45;
+  const CRISP_R = 1.12;                            // crisp when screen px per raster px > this
+  const tkey = (L, x, y) => L * 1099511627776 + (x + OFF) * 1048576 + (y + OFF);
+  const levels = []; for (let L = 0; L <= MAXL; L++) levels.push(new Map());
+  const dirtySets = []; for (let L = 0; L <= MAXL; L++) dirtySets.push(new Set());
+  let epoch = 0, vecTotal = 0, vecFloats = 0, upperCanvases = 0, canvases = 0;
+  let hibernated = 0, ghosts = 0, restores = 0;
+  let crisp = document.createElement("canvas");
+  let spareCrisp = document.createElement("canvas");
+  const crispView = { s: 0, tx: 0, ty: 0 };
+  let crispValid = false, crispTiles = [], rebuild = null;
+  let lastRebuildMs = 0, rebuilds = 0, lastRebuildEnd = 0, needCrispRefresh = false;
+  const pendingTiles = new Set();
+  let lastFlushFrame = 0, buildEnd = 0, tileBuilds = 0, starved = false;
+
+  function newTileCanvas() { const c = document.createElement("canvas"); c.width = c.height = TPX; canvases++; return c; }
+  function releaseCanvas(t) {
+    if (!t.c) return;
+    t.c.width = t.c.height = 0;   // let the browser free the backing store now
+    t.c = null; t.g = null; canvases--;
+    if (t.L > 0) upperCanvases--;
   }
-  function evictCount() {
-    let n = 0, segs = histSegs;
-    const want = histSegs > HIST_CAP || evicting;
-    while (n < chunks.length - 1 && ((want && segs > HIST_LOW) || alphaFor(chunks[n].epoch) < ALPHA_MIN)) {
-      segs -= chunks[n].n; n++;
+  function tileOnScreen(x, y) {
+    const m = 64 / view.s;
+    const wx0 = (0 - view.tx) / view.s - m, wx1 = (W - view.tx) / view.s + m;
+    const wy0 = (0 - view.ty) / view.s - m, wy1 = (H - view.ty) / view.s + m;
+    return (x + 1) * TILE > wx0 && x * TILE < wx1 && (y + 1) * TILE > wy0 && y * TILE < wy1;
+  }
+  function getTile0(x, y) {
+    const k = tkey(0, x, y);
+    let t = levels[0].get(k);
+    if (t) return t;
+    // Off-screen tiles are born without a raster: their growth is painted into the
+    // level-1 parent (see writeCtx) and they render sharp from vectors when viewed.
+    const onScreen = tileOnScreen(x, y);
+    const c = onScreen ? newTileCanvas() : null;
+    t = { L: 0, x, y, c, g: c ? c.getContext("2d") : null, lastWrite: epoch, vec: null, vn: 0, vecOK: true,
+          sumL: 0, blooms: [], stamp: -1, inCrisp: false, pendFrom: 0, rbDone: 0, lastSeen: performance.now() };
+    levels[0].set(k, t);
+    let ax = x, ay = y;
+    for (let L = 1; L <= MAXL; L++) {
+      ax = Math.floor(ax / 2); ay = Math.floor(ay / 2);
+      const kk = tkey(L, ax, ay);
+      if (!levels[L].has(kk)) levels[L].set(kk, { L, x: ax, y: ay, c: null, g: null, dirtyQ: 15, builtAt: 0, lastSeen: 0 });
     }
-    return n;
+    return t;
   }
-  // Background baking (only when the crisp layer isn't on screen): time-sliced
-  function bakeStep(budgetMs) {
-    if (rebuild || crispShown() || !needEvict()) return;
-    const t0 = performance.now();
-    bctx.setTransform(RS, 0, 0, RS, 0, 0);
-    while (needEvict() && performance.now() - t0 < budgetMs) {
-      const c = chunks[0];
-      const a = alphaFor(c.epoch);
-      const to = a < ALPHA_MIN ? c.n : Math.min(c.n, bakeCursor + SLICE);
-      if (a >= ALPHA_MIN) drawSegs(bctx, c, bakeCursor, to, a, null);
-      bakeCursor = to;
-      if (bakeCursor >= c.n) {
-        chunks.shift(); histSegs -= c.n; bakeCursor = 0;
-        const oldest = chunks[0].epoch;
-        while (blooms.length && blooms[0].epoch < oldest) { const bl = blooms.shift(); drawBloom(bctx, bl, alphaFor(bl.epoch)); }
+  function markDirtyUp(t) {
+    if (t.stamp === frame) return;
+    t.stamp = frame;
+    let cx = t.x, cy = t.y;
+    for (let L = 1; L <= MAXL; L++) {
+      const px = Math.floor(cx / 2), py = Math.floor(cy / 2);
+      const p = levels[L].get(tkey(L, px, py));
+      if (p) { p.dirtyQ |= 1 << ((cx & 1) + 2 * (cy & 1)); dirtySets[L].add(p); }
+      cx = px; cy = py;
+    }
+  }
+  // Nearest ancestor that has pixels, and the sub-rect of it covering tile (L,x,y)
+  function ancestorSrc(L, x, y) {
+    let ax = x, ay = y;
+    for (let A = L + 1; A <= MAXL; A++) {
+      ax = Math.floor(ax / 2); ay = Math.floor(ay / 2);
+      const a = levels[A].get(tkey(A, ax, ay));
+      if (a && a.c) {
+        const k = Math.pow(2, A - L), size = TPX / k;
+        return { c: a.c, sx: (x - ax * k) * size, sy: (y - ay * k) * size, size };
       }
     }
+    return null;
   }
+  function initFromAncestor(t) {
+    const src = ancestorSrc(t.L, t.x, t.y);
+    if (src) { t.g.setTransform(1, 0, 0, 1, 0, 0); t.g.drawImage(src.c, src.sx, src.sy, src.size, src.size, 0, 0, TPX, TPX); }
+  }
+  // Re-create a released level-0 raster: from its vectors (sharp) or, for a ghost,
+  // by upscaling its parent's quadrant.
+  function wakeTile(t) {
+    if (t.c) return;
+    t.c = newTileCanvas(); t.g = t.c.getContext("2d");
+    restores++;
+    if (t.vecOK && t.vn) {
+      hibernated--;
+      const g = t.g;
+      g.setTransform(RS, 0, 0, RS, -t.x * TPX, -t.y * TPX);
+      drawSegsTile(g, t, 0, t.vn, null);
+      for (const bl of t.blooms) paintBloom(g, bl.x, bl.y, bl.r, 1);
+      // strokes owned by neighbours spill across the edge
+      const cull = [t.x * TILE - 6, t.y * TILE - 6, (t.x + 1) * TILE + 6, (t.y + 1) * TILE + 6];
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        if (!dx && !dy) continue;
+        const nb = levels[0].get(tkey(0, t.x + dx, t.y + dy));
+        if (nb && nb.vn) drawSegsTile(g, nb, 0, nb.vn, cull);
+      }
+    } else {
+      ghosts--;
+      initFromAncestor(t);
+    }
+  }
+  // Periodically release rasters nobody is looking at and that are safely
+  // captured in their parent. A persistent round-robin cursor walks every tile
+  // (level 0 and the pyramid), so a huge world never starves the far end of the list.
+  //  - level 0: re-created from its vectors on demand (sharp)
+  //  - pyramid tiles: re-created from their parent (softer) + any live children
+  // The top 3 pyramid levels are tiny in count and always kept.
+  let hibL = 0, hibIt = null, upperReleased = 0;
+  // Soft raster target: above it, hibernation works harder and forgets "recently seen"
+  // sooner. It is not a cap - growth never stops, memory just grows slower.
+  const CANVAS_SOFT = LIGHT ? 250 : 500;
+  function hibernatePass(budgetMs) {
+    const now = performance.now(), end = now + budgetMs;
+    let visited = 0, total = 0;
+    for (let L = 0; L <= MAXL - 3; L++) total += levels[L].size;
+    while (performance.now() < end && visited < total) {
+      if (!hibIt) hibIt = levels[hibL].values();
+      const nx = hibIt.next();
+      if (nx.done) { hibL = hibL >= MAXL - 3 ? 0 : hibL + 1; hibIt = null; continue; }
+      visited++;
+      const t = nx.value, L = t.L;
+      if (!t.c || now - t.lastSeen < (canvases > CANVAS_SOFT ? 1200 : 4000)) continue;
+      if (L === 0 ? epoch - t.lastWrite < 1 : (t.dirtyQ || now - t.builtAt < 8000 || epoch - (t.lastWriteU || 0) < 3)) continue;
+      const par = levels[L + 1].get(tkey(L + 1, Math.floor(t.x / 2), Math.floor(t.y / 2)));
+      if (!par) continue;
+      const bit = 1 << ((t.x & 1) + 2 * (t.y & 1));
+      if (!par.c || (par.dirtyQ & bit)) {
+        if (L + 1 <= 2 || par.c) { buildEnd = end; buildTile(par); }   // don't resurrect big released ancestors here
+        continue;
+      }
+      releaseCanvas(t);
+      if (L === 0) { if (t.vecOK && t.vn) hibernated++; else ghosts++; }
+      else { t.rel = true; upperReleased++; }
+    }
+  }
+  function touchTile(t) { if (!t.c) wakeTile(t); t.lastWrite = epoch; markDirtyUp(t); }
+  // Where to paint new growth for level-0 tile (tx,ty). Awake tile: into its own raster.
+  // Hibernated/ghost tile (off-screen): paint straight into its level-1 parent at half
+  // resolution instead of waking it. Its vectors still record everything, so it wakes
+  // sharp when you look at it; meanwhile the zoomed-out pyramid stays current.
+  // This keeps the busy growth front from pinning a full-res raster per tile.
+  function writeCtx(tx, ty) {
+    const t = getTile0(tx, ty);
+    t.lastWrite = epoch;
+    if (t.c) {
+      t.g.setTransform(RS, 0, 0, RS, -tx * TPX, -ty * TPX);
+      markDirtyUp(t);
+      return t.g;
+    }
+    const px = Math.floor(tx / 2), py = Math.floor(ty / 2);
+    const p = levels[1].get(tkey(1, px, py));
+    if (!p.c) { buildEnd = performance.now() + 2; buildTile(p); }
+    p.lastWriteU = epoch;
+    markDirtyUp(t);   // the L1 bit for a released child is a no-op on rebuild; L2+ get refreshed
+    p.g.setTransform(RS / 2, 0, 0, RS / 2, -px * TPX, -py * TPX);
+    return p.g;
+  }
+  function clearWorld() {
+    for (const m of levels) for (const t of m.values()) if (t.c) t.c.width = t.c.height = 0;
+    for (const m of levels) m.clear();
+    for (const d of dirtySets) d.clear();
+    pendingTiles.clear();
+    vecTotal = 0; vecFloats = 0; upperCanvases = 0; canvases = 0; hibernated = 0; ghosts = 0; upperReleased = 0; hibIt = null; hibL = 0;
+    crispTiles = []; crispValid = false; rebuild = null;
+    soil.clear();
+  }
+
+  function strokeHypha(x0, y0, x1, y1, th, glow, am) {
+    const wO = th * (3.2 + glow * 2), wC = th * (0.85 + glow * 0.4);
+    const pad = wO * 0.5 + 1;
+    const tx0 = Math.floor((Math.min(x0, x1) - pad) / TILE), tx1 = Math.floor((Math.max(x0, x1) + pad) / TILE);
+    const ty0 = Math.floor((Math.min(y0, y1) - pad) / TILE), ty1 = Math.floor((Math.max(y0, y1) + pad) / TILE);
+    const sO = `rgba(210, 190, 150, ${((0.045 + glow * 0.08) * am).toFixed(3)})`;
+    const sC = `rgba(232, 220, 200, ${((0.38 + glow * 0.35) * am).toFixed(3)})`;
+    for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+      const g = writeCtx(tx, ty);
+      g.lineCap = "round";
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1);
+      g.strokeStyle = sO; g.lineWidth = wO; g.stroke();
+      g.strokeStyle = sC; g.lineWidth = wC; g.stroke();
+    }
+    hyphaCount++;
+  }
+  function paintBloom(g, x, y, r, a) {
+    if (a < 0.004) return;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(240, 210, 140, ${0.22 * a})`);
+    gr.addColorStop(0.45, `rgba(210, 180, 120, ${0.08 * a})`);
+    gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  function thickenNear(x, y, radius) {
+    for (let tx = Math.floor((x - radius) / TILE); tx <= Math.floor((x + radius) / TILE); tx++)
+      for (let ty = Math.floor((y - radius) / TILE); ty <= Math.floor((y + radius) / TILE); ty++) {
+        paintBloom(writeCtx(tx, ty), x, y, radius, 1);
+      }
+    const owner = getTile0(Math.floor(x / TILE), Math.floor(y / TILE));
+    if (owner.vecOK) owner.blooms.push({ x, y, r: radius });
+    if (crispValid && owner.inCrisp) { const g = crisp.getContext("2d"); viewXform(g, crispView); paintBloom(g, x, y, radius, 1); }
+  }
+
+  // --- vector history per tile (for sharp zoom-in) ---
+  function dropVec(t) {
+    vecTotal -= t.vn; vecFloats -= t.vec ? t.vec.length : 0;
+    if (!t.c && t.vn) { hibernated--; ghosts++; }
+    t.vec = null; t.vn = 0; t.vecOK = false; t.blooms = [];
+    pendingTiles.delete(t);
+    if (t.inCrisp) crispValid = false;   // re-render (this tile is shown from raster from now on)
+  }
+  function recordSeg(x0, y0, x1, y1, th, glow, steps, id, am) {
+    const t = getTile0(Math.floor((x0 + x1) * 0.5 / TILE), Math.floor((y0 + y1) * 0.5 / TILE));
+    if (!t.vecOK) return;
+    if (!t.vec) { t.vec = new Float32Array(1024 * VSTRIDE); vecFloats += t.vec.length; }
+    if (t.vn * VSTRIDE >= t.vec.length) {
+      if (t.vn >= VEC_TILE_CAP) { dropVec(t); return; }   // very dense tile: raster-only from now on
+      if (t.vn * VSTRIDE >= t.vec.length) {
+        const nb = new Float32Array(Math.min(VEC_TILE_CAP, t.vec.length / VSTRIDE * 2) * VSTRIDE);
+        nb.set(t.vec); vecFloats += nb.length - t.vec.length; t.vec = nb;
+      }
+    }
+    const o = t.vn * VSTRIDE, b = t.vec;
+    b[o] = x0; b[o + 1] = y0; b[o + 2] = x1; b[o + 3] = y1; b[o + 4] = th; b[o + 5] = glow; b[o + 6] = id; b[o + 7] = am;
+    t.sumL += Math.hypot(x1 - x0, y1 - y0) / Math.max(1, steps);
+    t.vn++; vecTotal++;
+    if (t.inCrisp && crispValid) pendingTiles.add(t);
+  }
+  function enforceVecBudget() {
+    if (vecTotal <= VEC_BUDGET) return;
+    const cands = [];
+    for (const t of levels[0].values()) if (t.vn && !t.inCrisp) cands.push(t);
+    cands.sort((a, b) => a.lastWrite - b.lastWrite);
+    for (const t of cands) { if (vecTotal < VEC_BUDGET * 0.85) break; dropVec(t); }
+  }
+
+  // Batched, per-tip-chained stroke of a tile's segments [from,to) into g
+  // (g's transform maps world -> target pixels). Buckets: 4 widths x glow x 6 alphas.
+  const TB = [0.85, 1.2, 1.6, 2.1];
+  const bucketPaths = new Array(48);
+  let sortKeys = new Float64Array(SLICE);
+  function drawSegsTile(g, t, from, to, cull) {
+    if (to <= from || !t.vec) return;
+    if (to - from > SLICE) { for (let a = from; a < to; a += SLICE) drawSegsTile(g, t, a, Math.min(to, a + SLICE), cull); return; }
+    bucketPaths.fill(null);
+    const b = t.vec, n = to - from;
+    if (sortKeys.length < n) sortKeys = new Float64Array(n);
+    const keys = sortKeys.subarray(0, n);
+    for (let i = 0; i < n; i++) keys[i] = b[(from + i) * VSTRIDE + 6] * 65536 + i;
+    keys.sort();
+    let pid = -1, pk = -1, px = 0, py = 0;
+    for (let j = 0; j < n; j++) {
+      const kk = keys[j], id = Math.floor(kk / 65536), i = from + (kk - id * 65536);
+      const o = i * VSTRIDE;
+      const x0 = b[o], y0 = b[o + 1], x1 = b[o + 2], y1 = b[o + 3];
+      if (cull && ((x0 < cull[0] && x1 < cull[0]) || (x0 > cull[2] && x1 > cull[2]) ||
+                   (y0 < cull[1] && y1 < cull[1]) || (y0 > cull[3] && y1 > cull[3]))) { pid = -1; continue; }
+      const ab = Math.min(5, Math.max(0, Math.floor((b[o + 7] - 0.3) / 0.7 * 6)));
+      const th = b[o + 4];
+      const k = ((th < 1.0 ? 0 : th < 1.4 ? 1 : th < 1.85 ? 2 : 3) + (b[o + 5] > 0.25 ? 4 : 0)) * 6 + ab;
+      const pth = bucketPaths[k] || (bucketPaths[k] = new Path2D());
+      if (!(id === pid && k === pk && x0 === px && y0 === py)) pth.moveTo(x0, y0);
+      pth.lineTo(x1, y1);
+      pid = id; pk = k; px = x1; py = y1;
+    }
+    const L = Math.max(0.3, t.sumL / Math.max(1, t.vn));
+    g.lineCap = "butt"; g.lineJoin = "round";
+    for (let k = 0; k < 48; k++) {
+      const pth = bucketPaths[k];
+      if (!pth) continue;
+      const sb = Math.floor(k / 6), am = 0.3 + ((k % 6) + 0.5) * (0.7 / 6);
+      const th = TB[sb & 3], gl = sb >= 4 ? 0.55 : 0.05;
+      const wO = th * (3.2 + gl * 2), wC = th * (0.85 + gl * 0.4);
+      // per-step raster strokes overlap (~1px steps) and stack alpha; match that
+      const aO = 1 - Math.pow(1 - (0.045 + gl * 0.08) * am, Math.max(1, wO / L));
+      const aC = 1 - Math.pow(1 - (0.38 + gl * 0.35) * am, Math.max(1, wC / L));
+      g.strokeStyle = `rgba(210, 190, 150, ${aO.toFixed(4)})`;
+      g.lineWidth = wO; g.stroke(pth);
+      g.strokeStyle = `rgba(232, 220, 200, ${aC.toFixed(4)})`;
+      g.lineWidth = wC; g.stroke(pth);
+    }
+  }
+
+  // --- visibility / compositing ---
+  function visibleRange(L) {
+    const size = TILE * Math.pow(2, L);
+    return [Math.floor((-view.tx) / view.s / size), Math.floor((W - view.tx) / view.s / size),
+            Math.floor((-view.ty) / view.s / size), Math.floor((H - view.ty) / view.s / size)];
+  }
+  function visibleTiles0() {
+    const [x0, x1, y0, y1] = visibleRange(0), out = [];
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 4000) return out;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const t = levels[0].get(tkey(0, x, y)); if (t) out.push(t);
+    }
+    return out;
+  }
+  function tileDest(L, x, y) {
+    const size = TILE * Math.pow(2, L);
+    const wx = x * size, wy = y * size;
+    const x0 = Math.round(dpr * (wx * view.s + view.tx)), x1 = Math.round(dpr * ((wx + size) * view.s + view.tx));
+    const y0 = Math.round(dpr * (wy * view.s + view.ty)), y1 = Math.round(dpr * ((wy + size) * view.s + view.ty));
+    return [x0, y0, x1 - x0, y1 - y0];
+  }
+  // (identity transform) draw a tile snapped to device pixels so neighbours meet without seams;
+  // released tiles fall back to the nearest ancestor's pixels
+  function drawTileImage(t) {
+    const d = tileDest(t.L, t.x, t.y);
+    if (d[2] <= 0 || d[3] <= 0) return;
+    t.lastSeen = performance.now();
+    if (t.c) { ctx.drawImage(t.c, d[0], d[1], d[2], d[3]); return; }
+    const src = ancestorSrc(t.L, t.x, t.y);
+    if (src) ctx.drawImage(src.c, src.sx, src.sy, src.size, src.size, d[0], d[1], d[2], d[3]);
+  }
+  function buildTile(p) {
+    if (!p.c) {
+      p.c = newTileCanvas(); p.g = p.c.getContext("2d"); upperCanvases++;
+      initFromAncestor(p);
+      // a released tile only needs the quadrants that changed since it was released;
+      // a never-built tile needs all four
+      if (p.rel) { p.rel = false; upperReleased--; } else p.dirtyQ = 15;
+    }
+    const g = p.g, h = TPX / 2;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const now = performance.now(), q0 = (frame + p.x + p.y) & 3;
+    for (let qi = 0; qi < 4; qi++) {
+      const q = (q0 + qi) & 3, bit = 1 << q;
+      if (!(p.dirtyQ & bit)) continue;
+      const dx = q & 1, dy = q >> 1;
+      const c = levels[p.L - 1].get(tkey(p.L - 1, p.x * 2 + dx, p.y * 2 + dy));
+      if (!c) { g.clearRect(dx * h, dy * h, h, h); p.dirtyQ &= ~bit; continue; }
+      // never-built children first; busy (growing) ones at most every 400 ms so they
+      // can't starve the rest of the pyramid of build budget
+      if (c.L >= 1 && (!c.c || (c.dirtyQ && now - c.builtAt > 400))) {
+        if (performance.now() < buildEnd) buildTile(c); else if (!c.c) starved = true;
+      }
+      if (c.c) {
+        g.clearRect(dx * h, dy * h, h, h);
+        g.drawImage(c.c, dx * h, dy * h, h, h);
+        // downsampling thins 1px hyphae to nothing; add a little light back per level
+        g.globalCompositeOperation = "lighter"; g.globalAlpha = PYR_BOOST;
+        g.drawImage(c.c, dx * h, dy * h, h, h);
+        g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+        if (!(c.L >= 1 && c.dirtyQ)) p.dirtyQ &= ~bit;
+      } else if (c.L === 0) {
+        p.dirtyQ &= ~bit;   // released level-0 child: its pixels are already here
+      }
+    }
+    p.builtAt = performance.now(); tileBuilds++;
+  }
+  function levelFor(s) {
+    const r = RS / (s * dpr);
+    return r < 2 ? 0 : Math.min(MAXL, Math.floor(Math.log2(r)));
+  }
+  const crispWanted = () => view.s * dpr > RS * CRISP_R;
+  const crispShown = () => crispValid && crispWanted();
+
   function startRebuild() {
-    const n = evictCount();
+    const list = visibleTiles0().filter(t => t.vecOK && t.vn);
     const g = spareCrisp.getContext("2d");
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, spareCrisp.width, spareCrisp.height);
-    if (n) {
-      const gb = spareBaked.getContext("2d");
-      gb.setTransform(1, 0, 0, 1, 0, 0); gb.clearRect(0, 0, spareBaked.width, spareBaked.height);
-      gb.drawImage(baked, 0, 0);
-    }
-    rebuild = { s: view.s, tx: view.tx, ty: view.ty, evictN: n, bi: 0, bsi: bakeCursor,
-                ci: n, si: n === 0 ? bakeCursor : 0, t0: performance.now(), cull: viewCull(view) };
+    for (const t of list) t.rbDone = 0;
+    rebuild = { s: view.s, tx: view.tx, ty: view.ty, list, i: 0, si: 0, t0: performance.now(), cull: viewCull(view) };
   }
   function stepRebuild(budgetMs) {
     const r = rebuild, t0 = performance.now();
-    if (r.evictN) {
-      const gb = spareBaked.getContext("2d");
-      gb.setTransform(RS, 0, 0, RS, 0, 0);
-      while (r.bi < r.evictN) {
-        const c = chunks[r.bi], a = alphaFor(c.epoch);
-        const to = Math.min(c.n, r.bsi + SLICE);
-        if (a >= ALPHA_MIN) drawSegs(gb, c, r.bsi, to, a, null);
-        r.bsi = to;
-        if (r.bsi >= c.n) { r.bi++; r.bsi = 0; }
-        if (performance.now() - t0 > budgetMs) return;
-      }
-    }
     const g = spareCrisp.getContext("2d");
     viewXform(g, r);
-    while (true) {
-      const c = chunks[r.ci];
-      if (!c) break;
-      const to = Math.min(c.n, r.si + SLICE);
-      drawSegs(g, c, r.si, to, alphaFor(c.epoch), r.cull);
-      r.si = to;
-      if (r.si >= c.n) {
-        if (r.ci >= chunks.length - 1) break;   // reached the live end of history
-        r.ci++; r.si = 0;
+    while (r.i < r.list.length) {
+      const t = r.list[r.i];
+      const to = Math.min(t.vn, r.si + SLICE);
+      drawSegsTile(g, t, r.si, to, r.cull);
+      r.si = to; t.rbDone = to;
+      if (r.si >= t.vn) {
+        for (const bl of t.blooms) paintBloom(g, bl.x, bl.y, bl.r, 1);
+        r.i++; r.si = 0;
       }
       if (performance.now() - t0 > budgetMs) return;
     }
-    // Finalize: blooms, drop evicted chunks, swap buffers
-    const keepFrom = r.evictN < chunks.length ? chunks[r.evictN].epoch : epoch;
-    if (r.evictN) {
-      const gb = spareBaked.getContext("2d");
-      gb.setTransform(RS, 0, 0, RS, 0, 0);
-      while (blooms.length && blooms[0].epoch < keepFrom) { const bl = blooms.shift(); drawBloom(gb, bl, alphaFor(bl.epoch)); }
+    for (const t of crispTiles) t.inCrisp = false;
+    pendingTiles.clear();
+    for (const t of r.list) {
+      t.inCrisp = true; t.pendFrom = t.rbDone;
+      if (t.pendFrom < t.vn) pendingTiles.add(t);
     }
-    viewXform(g, r);
-    for (const bl of blooms) drawBloom(g, bl, alphaFor(bl.epoch));
-    if (r.evictN) {
-      for (let i = 0; i < r.evictN; i++) histSegs -= chunks[i].n;
-      chunks.splice(0, r.evictN);
-      bakeCursor = 0;
-      const gb0 = bctx;             // copy the new baked layer into place gb0.setTransform(1, 0, 0, 1, 0, 0);
-      gb0.clearRect(0, 0, baked.width, baked.height);
-      gb0.drawImage(spareBaked, 0, 0);
-    }
+    crispTiles = r.list;
     const tmp = crisp; crisp = spareCrisp; spareCrisp = tmp;
     crispView.s = r.s; crispView.tx = r.tx; crispView.ty = r.ty;
     crispValid = view.s === r.s && view.tx === r.tx && view.ty === r.ty;
-    pendingCrisp = [];
-    lastRebuildMs = performance.now() - r.t0; rebuilds++;
+    lastRebuildMs = performance.now() - r.t0; rebuilds++; lastRebuildEnd = performance.now();
     rebuild = null;
   }
-  let lastFlushFrame = 0;
-  function drawPendingLive() {
-    // segments recorded since the last flush, drawn straight onto the screen
-    if (!crispShown() || !pendingCrisp.length) return;
-    const cull = viewCull(view);
-    for (const [c, from] of pendingCrisp) drawSegs(ctx, c, from, c.n, alphaFor(c.epoch), cull);
+  function flushPendingCrisp() {
+    if (!pendingTiles.size) return;
+    if (!crispValid) { pendingTiles.clear(); return; }
+    if (frame - lastFlushFrame < 12) return;
+    lastFlushFrame = frame;
+    const g = crisp.getContext("2d");
+    viewXform(g, crispView);
+    const cull = viewCull(crispView);
+    for (const t of pendingTiles) { drawSegsTile(g, t, t.pendFrom, t.vn, cull); t.pendFrom = t.vn; }
+    pendingTiles.clear();
   }
-  function drawTipTails() {
-    // the not-yet-recorded piece of each hypha (anchor -> tip), crisp mode only
-    if (!crispShown()) return;
+  function drawPendingLive() {
+    if (!pendingTiles.size) return;
+    const cull = viewCull(view);
+    for (const t of pendingTiles) drawSegsTile(ctx, t, t.pendFrom, t.vn, cull);
+  }
+  function drawTipTails(cull) {
     const pth = new Path2D();
-    for (const t of tips) { pth.moveTo(t.ax, t.ay); pth.lineTo(t.x, t.y); }
+    for (const t of tips) {
+      if (t.x < cull[0] || t.x > cull[2] || t.y < cull[1] || t.y > cull[3]) continue;
+      pth.moveTo(t.ax, t.ay); pth.lineTo(t.x, t.y);
+    }
     ctx.lineCap = "butt";
     ctx.strokeStyle = "rgba(210, 190, 150, 0.14)"; ctx.lineWidth = 3.6; ctx.stroke(pth);
     ctx.strokeStyle = "rgba(232, 220, 200, 0.4)"; ctx.lineWidth = 0.95; ctx.stroke(pth);
   }
-  function flushPendingCrisp(force) {
-    if (!pendingCrisp.length) return;
-    if (crispValid && !force && frame - lastFlushFrame < 12) return;
-    lastFlushFrame = frame;
-    if (crispValid) {
-      const g = crisp.getContext("2d");
-      viewXform(g, crispView);
-      const cull = viewCull(crispView);
-      for (const [c, from] of pendingCrisp) drawSegs(g, c, from, c.n, alphaFor(c.epoch), cull);
-    }
-    pendingCrisp = [];
-  }
-  function fadeEpoch() {
+  function housekeeping() {
     epoch++;
-    fadeCanvas(trail); fadeCanvas(baked); fadeCanvas(crisp);
-    if (rebuild) { fadeCanvas(spareCrisp); if (rebuild.evictN) fadeCanvas(spareBaked); }
-    // In crisp mode, evicting must go through a rebuild (so nothing draws twice)
-    if (crispShown() && !rebuild && needEvict()) startRebuild();
+    enforceVecBudget();
+    hibernatePass(canvases > CANVAS_SOFT ? (LIGHT ? 3 : 5) : 2);
+    warmPyramid(LIGHT ? 2 : 4);
+    pyramidTick(LIGHT ? 3 : 6);
+  }
+  // Keep the whole pyramid fresh in the background, bottom-up, a little every frame,
+  // so zooming out anywhere shows current growth (not a stale early snapshot).
+  function pyramidTick(budgetMs) {
+    const now = performance.now();
+    buildEnd = now + budgetMs;
+    for (let L = 1; L <= MAXL; L++) {
+      const set = dirtySets[L];
+      for (const t of set) {
+        if (performance.now() > buildEnd) return;
+        if (!t.dirtyQ) { set.delete(t); continue; }
+        if (t.c && now - t.builtAt < 1000) continue;
+        buildTile(t);
+        if (!t.dirtyQ) set.delete(t);
+      }
+    }
+  }
+  // Pre-build pyramid tiles that have never been rendered, low levels first,
+  // so zooming out right after a long unwatched run shows few holes.
+  function warmPyramid(budgetMs) {
+    buildEnd = performance.now() + budgetMs;
+    for (let L = 1; L <= MAXL; L++) {
+      for (const t of levels[L].values()) {
+        if (performance.now() > buildEnd) return;
+        if (!t.c && !t.rel) buildTile(t);
+      }
+    }
   }
 
-  function rand(a, b) { return a + Math.random() * (b - a); }
-  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-  function len(x, y) { return Math.hypot(x, y); }
+  // --- the hyphae layer for this frame ---
+  let lastLevel = 0, visCount = 0;
+  function drawHyphae(nowMs) {
+    const cull = viewCull(view);
+    if (crispShown()) {
+      lastLevel = -1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(crisp, 0, 0);
+      const vis = visibleTiles0(); visCount = vis.length;
+      needCrispRefresh = false;
+      for (const t of vis) {
+        t.lastSeen = nowMs;
+        if (!t.inCrisp) { drawTileImage(t); if (t.vecOK && t.vn) needCrispRefresh = true; }
+      }
+      viewXform(ctx, view);
+      drawPendingLive();
+      drawTipTails(cull);
+      return;
+    }
+    const L = levelFor(view.s);
+    lastLevel = L;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (L === 0) {
+      const vis = visibleTiles0(); visCount = vis.length;
+      const wakeEnd = performance.now() + (LIGHT ? 4 : 6);
+      for (const t of vis) {
+        if (!t.c && t.vecOK && t.vn && performance.now() < wakeEnd) wakeTile(t);
+        drawTileImage(t);
+      }
+    } else {
+      // unbuilt (hole) tiles in view get a bigger budget until the pyramid catches up
+      buildEnd = performance.now() + (starved ? (LIGHT ? 10 : 16) : (LIGHT ? 5 : 7));
+      starved = false;
+      const [x0, x1, y0, y1] = visibleRange(L);
+      const vis = [];
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+        const p = levels[L].get(tkey(L, x, y));
+        if (p) vis.push(p);
+      }
+      // build in a rotating order so no tile is starved of the per-frame budget
+      const n = vis.length, st = n ? frame % n : 0;
+      for (let i = 0; i < n; i++) {
+        const p = vis[(st + i) % n];
+        if (!p.c || (p.dirtyQ && performance.now() - p.builtAt > 250)) {
+          if (performance.now() < buildEnd) buildTile(p); else if (!p.c) starved = true;
+        }
+      }
+      for (const p of vis) drawTileImage(p);
+      visCount = n;
+    }
+    viewXform(ctx, view);
+  }
+
+  // ===========================================================================
+  // Soil freshness: hyphae deplete the soil they pass through; tips in fresh soil
+  // regain energy, so the colony keeps expanding outward (a fairy ring) forever.
+  // ===========================================================================
+  const soil = new Map();
+  const SOIL_CELL = 64, SOIL_OFF = 1048576, FRESH_V = 150;
+  const soilKey = (x, y) => (Math.floor(x / SOIL_CELL) + SOIL_OFF) * 2097152 + (Math.floor(y / SOIL_CELL) + SOIL_OFF);
+
+  // Nutrient spatial hash (rebuilt every sim step; cheap)
+  let nutGrid = new Map();
+  const nutKey = (cx, cy) => (cx + SOIL_OFF) * 2097152 + (cy + SOIL_OFF);
+  function rebuildNutGrid() {
+    nutGrid = new Map();
+    for (const n of nutrients) {
+      if (!n.alive) continue;
+      const k = nutKey(Math.floor(n.x / SENSE_R), Math.floor(n.y / SENSE_R));
+      const a = nutGrid.get(k); if (a) a.push(n); else nutGrid.set(k, [n]);
+    }
+  }
 
   let tipSeq = 0;
   let spreadAccum = 0;   // px of new hyphae laid since last audio frame
+  let simTime = 0, rr = 0;
+  let maxDist = 0;
   function makeTip(x, y, angle, energy) {
     return {
       id: ++tipSeq,
@@ -749,24 +1010,19 @@
       thickness: rand(0.7, 1.35),
       lastX: x,
       lastY: y,
-      ax: x, ay: y, steps: 0,   // anchor of the current merged history segment
+      ax: x, ay: y, steps: 0,   // anchor of the current merged vector segment
+      simT: simTime,
+      dead: false,
       glow: 0,
     };
   }
 
   function addNutrient(x, y, strength) {
-    if (nutrients.length >= MAX_NUTRIENTS) {
-      // absorb oldest unused
-      nutrients.shift();
-    }
-    const n = {
-      x, y,
-      r: rand(5, 8),
-      strength: strength ?? rand(0.85, 1.35),
-      pulse: rand(0, Math.PI * 2),
-      alive: true,
-    };
+    if (nutrients.length >= MAX_NUTRIENTS) nutrients.shift();
+    const n = { x, y, r: rand(5, 8), strength: strength ?? rand(0.85, 1.35), pulse: rand(0, Math.PI * 2), alive: true };
     nutrients.push(n);
+    extendBB(x, y);
+    rebuildNutGrid();
     return n;
   }
 
@@ -778,6 +1034,7 @@
       ids.push(t.id);
       tips.push(t);
     }
+    extendBB(x, y);
     const pulse = { x, y, r: 4, max: 40, life: 1, color: "cream" };
     pulses.push(pulse);
     return { ids, pulse };
@@ -790,104 +1047,44 @@
     nutrients = [];
     pulses = [];
     hyphaCount = 0;
-    // Reset re-fits the world to the current screen
-    if (WW !== W || WH !== H || RS !== dpr) { WW = W; WH = H; allocWorld(); }
-    clearHistory();
+    maxDist = 0;
+    clearWorld();
+    bb.x0 = bb.x1 = bb.y0 = bb.y1 = 0;
+    // World origin = the first spore; start at 1x with it just above centre
     viewAnim = null;
-    setFit();
-
-    // Center spore
-    plantSpore(WW * 0.5, WH * 0.52);
-
-    // A few starter nutrients around
+    view.s = 1; view.tx = W / 2; view.ty = H * 0.52;
+    markView();
+    plantSpore(0, 0);
     const ring = [
       [0.28, 0.32], [0.72, 0.30], [0.22, 0.68],
       [0.78, 0.72], [0.55, 0.22], [0.40, 0.78],
     ];
-    for (const [nx, ny] of ring) {
-      addNutrient(WW * nx + rand(-20, 20), WH * ny + rand(-20, 20));
-    }
-
-    // Soft ambient motes
+    for (const [nx, ny] of ring) addNutrient((nx - 0.5) * W + rand(-20, 20), (ny - 0.52) * H + rand(-20, 20));
     motes = [];
     for (let i = 0; i < MOTE_COUNT; i++) {
-      motes.push({
-        x: rand(0, WW), y: rand(0, WH),
-        r: rand(0.4, 1.4),
-        a: rand(0.04, 0.14),
-        drift: rand(0.05, 0.25),
-        phase: rand(0, Math.PI * 2),
-      });
+      motes.push({ x: Math.random(), y: Math.random(), r: rand(0.4, 1.4), a: rand(0.04, 0.14),
+                   drift: rand(0.05, 0.25), phase: rand(0, Math.PI * 2), depth: rand(0.03, 0.12) });
     }
   }
 
   function nearestNutrientPull(tip) {
-    let best = null;
-    let bestD = SENSE_R;
-    let px = 0, py = 0;
-    for (const n of nutrients) {
-      if (!n.alive) continue;
-      const dx = n.x - tip.x;
-      const dy = n.y - tip.y;
-      const d = Math.hypot(dx, dy);
-      if (d < bestD) {
-        bestD = d;
-        best = n;
-      }
-      // Soft inverse-distance field (accumulate a few near ones)
-      if (d < SENSE_R && d > 0.01) {
-        const w = (n.strength * (1 - d / SENSE_R)) / (d * 0.015 + 0.35);
-        px += (dx / d) * w;
-        py += (dy / d) * w;
+    let best = null, bestD = SENSE_R, px = 0, py = 0;
+    const cx = Math.floor(tip.x / SENSE_R), cy = Math.floor(tip.y / SENSE_R);
+    for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) {
+      const arr = nutGrid.get(nutKey(gx, gy));
+      if (!arr) continue;
+      for (const n of arr) {
+        if (!n.alive) continue;
+        const dx = n.x - tip.x, dy = n.y - tip.y;
+        const d = Math.hypot(dx, dy);
+        if (d < bestD) { bestD = d; best = n; }
+        if (d < SENSE_R && d > 0.01) {
+          const w = (n.strength * (1 - d / SENSE_R)) / (d * 0.015 + 0.35);
+          px += (dx / d) * w; py += (dy / d) * w;
+        }
       }
     }
     return { best, bestD, px, py };
-  }
-
-  function strokeHypha(x0, y0, x1, y1, thickness, glow) {
-    const sx = RS, sy = RS;
-    tctx.save();
-    tctx.scale(sx, sy);
-    tctx.lineCap = "round";
-    tctx.lineJoin = "round";
-
-    // Soft outer glow
-    tctx.strokeStyle = `rgba(210, 190, 150, ${0.045 + glow * 0.08})`;
-    tctx.lineWidth = thickness * (3.2 + glow * 2);
-    tctx.beginPath();
-    tctx.moveTo(x0, y0);
-    tctx.lineTo(x1, y1);
-    tctx.stroke();
-
-    // Core filament
-    const alpha = 0.38 + glow * 0.35;
-    tctx.strokeStyle = `rgba(232, 220, 200, ${alpha})`;
-    tctx.lineWidth = thickness * (0.85 + glow * 0.4);
-    tctx.beginPath();
-    tctx.moveTo(x0, y0);
-    tctx.lineTo(x1, y1);
-    tctx.stroke();
-    tctx.restore();
-    hyphaCount++;
-  }
-
-  function thickenNear(x, y, radius) {
-    // Draw a soft bright bloom on the trail layer near absorption
-    const bl = { x, y, r: radius, epoch };
-    blooms.push(bl);
-    if (blooms.length > 400) blooms.shift();
-    if (crispValid) { const g2 = crisp.getContext("2d"); viewXform(g2, crispView); drawBloom(g2, bl, 1); }
-    tctx.save();
-    tctx.scale(RS, RS);
-    const g = tctx.createRadialGradient(x, y, 0, x, y, radius);
-    g.addColorStop(0, "rgba(240, 210, 140, 0.22)");
-    g.addColorStop(0.45, "rgba(210, 180, 120, 0.08)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    tctx.fillStyle = g;
-    tctx.beginPath();
-    tctx.arc(x, y, radius, 0, Math.PI * 2);
-    tctx.fill();
-    tctx.restore();
   }
 
   function absorbNutrient(n, tip) {
@@ -898,8 +1095,6 @@
     pulses.push({ x: n.x, y: n.y, r: 6, max: 55, life: 1, color: "gold" });
     thickenNear(n.x, n.y, 28);
     Hum.chime(screenXN(n.x));
-
-    // Fan of new tips
     const fan = 3 + Math.floor(Math.random() * 3);
     for (let i = 0; i < fan && tips.length < MAX_TIPS; i++) {
       const a = tip.angle + rand(-1.1, 1.1) + (i - fan / 2) * 0.35;
@@ -908,29 +1103,38 @@
   }
 
   function updateTips(dt, speedMul, branchMul) {
-    const next = [];
-    // Occasional gentle trail fade so the web doesn't blow out to solid white
-    if (frame % 90 === 0) fadeEpoch();
+    simTime += dt;
+    if (frame % 90 === 0) housekeeping();
+    else if (frame % 10 === 0) hibernatePass(canvases > CANVAS_SOFT ? (LIGHT ? 3 : 5) : 1.5);
+    const n = tips.length;
+    const budget = Math.min(n, SIM_BUDGET);
+    const born = [];
+    let dead = 0, deadBeforeRr = 0, absorbed = false;
+    if (rr >= n) rr = 0;
+    for (let j = 0; j < budget; j++) {
+      if (rr >= n) rr = 0;
+      const idx = rr++;
+      const tip = tips[idx];
+      const tdt = Math.min(0.25, simTime - tip.simT);
+      tip.simT = simTime;
+      if (tdt <= 0) continue;
+      const f60 = tdt * 60;
+      tip.age += tdt;
+      tip.glow = Math.max(0, tip.glow - 0.35 * tdt);
 
-    for (let i = 0; i < tips.length; i++) {
-      const tip = tips[i];
-      tip.age += dt;
-      tip.energy -= 0.012 * dt;
-      tip.glow = Math.max(0, tip.glow - 0.35 * dt);
+      // soil freshness where the tip is
+      const sk = soilKey(tip.x, tip.y);
+      const visits = soil.get(sk) || 0;
+      const fresh = Math.exp(-visits / FRESH_V);
+      tip.energy += tdt * (0.045 * fresh - 0.027);
+      if (tip.energy > 2.2) tip.energy = 2.2;
 
-      if (tip.energy <= 0 || tip.age > 55) continue;
-      // Soft cull near edges
-      if (tip.x < -20 || tip.y < -20 || tip.x > WW + 20 || tip.y > WH + 20) continue;
+      if (tip.energy <= 0 || tip.age > 55) { tip.dead = true; dead++; if (idx < rr) deadBeforeRr++; continue; }
 
       const { best, bestD, px, py } = nearestNutrientPull(tip);
-
-      // Desired heading: wander + chemotaxis
       const pullMag = Math.hypot(px, py);
       let desired = tip.angle;
-      if (pullMag > 0.01) {
-        desired = Math.atan2(py, px);
-      }
-      // Angle lerp with wander
+      if (pullMag > 0.01) desired = Math.atan2(py, px);
       let diff = desired - tip.angle;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
@@ -939,60 +1143,49 @@
 
       tip.lastX = tip.x;
       tip.lastY = tip.y;
-      // Frame-rate independent step (~px at 60fps), boosted near food / by speed
       const dist = tip.speed * speedMul * (1.0 + chemStrength * 0.45) * (bestD < 40 ? 1.2 : 1)
-                 * (0.9 + tip.energy * 0.15) * (dt * 60);
+                 * (0.9 + tip.energy * 0.15) * f60;
       tip.x = tip.lastX + Math.cos(tip.angle) * dist;
       tip.y = tip.lastY + Math.sin(tip.angle) * dist;
+      soil.set(sk, visits + dist);
 
-      tip.spd = dt > 0 ? dist / dt : 0;
+      tip.spd = dist / tdt;
       spreadAccum += dist;
-      strokeHypha(tip.lastX, tip.lastY, tip.x, tip.y, tip.thickness, tip.glow);
+      const am = 0.3 + 0.7 * fresh;   // explored soil -> fainter strokes (no wash-out)
+      strokeHypha(tip.lastX, tip.lastY, tip.x, tip.y, tip.thickness, tip.glow, am);
       tip.steps++;
       const mdx = tip.x - tip.ax, mdy = tip.y - tip.ay;
       if (mdx * mdx + mdy * mdy >= MERGE2) {
-        recordSeg(tip.ax, tip.ay, tip.x, tip.y, tip.thickness, tip.glow, tip.steps, tip.id);
+        recordSeg(tip.ax, tip.ay, tip.x, tip.y, tip.thickness, tip.glow, tip.steps, tip.id, am);
         tip.ax = tip.x; tip.ay = tip.y; tip.steps = 0;
       }
+      extendBB(tip.x, tip.y);
+      const d0 = tip.x * tip.x + tip.y * tip.y;
+      if (d0 > maxDist * maxDist) maxDist = Math.sqrt(d0);
 
-      // Absorb
-      if (best && bestD < ABSORB_R + best.r) {
-        absorbNutrient(best, tip);
-      }
+      if (best && bestD < ABSORB_R + best.r) { absorbNutrient(best, tip); absorbed = true; }
 
-      // Branching — more likely near nutrients / with energy
+      // Branching — near food, with energy, and mostly in fresh soil
       const nearFood = bestD < SENSE_R * 0.55;
-      const p = (0.004 + (nearFood ? 0.012 : 0) + tip.energy * 0.003) * branchMul;
-      if (Math.random() < p && tips.length + next.length < MAX_TIPS) {
+      const p = (0.004 + (nearFood ? 0.012 : 0) + tip.energy * 0.003) * branchMul * (0.25 + 0.75 * fresh) * f60;
+      if (Math.random() < p) {
         const ba = tip.angle + rand(0.55, 1.25) * (Math.random() < 0.5 ? -1 : 1);
-        next.push(makeTip(tip.x, tip.y, ba, tip.energy * 0.7));
+        born.push(makeTip(tip.x, tip.y, ba, tip.energy * 0.7));
         tip.energy *= 0.72;
       }
-
-      next.push(tip);
     }
-
-    // Cap tip population by dropping oldest low-energy
-    if (next.length > MAX_TIPS) {
-      next.sort((a, b) => b.energy - a.energy);
-      tips = next.slice(0, MAX_TIPS);
-    } else {
-      tips = next;
-    }
-
-    nutrients = nutrients.filter(n => n.alive);
+    if (dead) { tips = tips.filter(t => !t.dead); rr = Math.max(0, rr - deadBeforeRr); }
+    for (const b of born) tips.push(b);
+    if (absorbed) { nutrients = nutrients.filter(q => q.alive); rebuildNutGrid(); }
   }
 
   function drawSoilBackground() {
-    // Deep earth gradient
     const g = ctx.createRadialGradient(W * 0.5, H * 0.45, 40, W * 0.5, H * 0.5, Math.max(W, H) * 0.75);
     g.addColorStop(0, "#231910");
     g.addColorStop(0.45, "#16110d");
     g.addColorStop(1, "#0a0806");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
-
-    // Subtle grain (cheap, deterministic-ish per frame dither)
     ctx.fillStyle = "rgba(255,220,160,0.015)";
     for (let i = 0; i < 60; i++) {
       const x = (Math.sin(frame * 0.01 + i * 12.9898) * 0.5 + 0.5) * W;
@@ -1002,59 +1195,63 @@
   }
 
   function drawMotes(dt) {
+    // screen-space dust with slight parallax against the camera (the soil is endless)
     for (const m of motes) {
       m.phase += dt * m.drift;
-      const ox = Math.sin(m.phase) * 8;
-      const oy = Math.cos(m.phase * 0.7) * 6;
+      const x = (((m.x * W + view.tx * m.depth) % W) + W) % W + Math.sin(m.phase) * 8;
+      const y = (((m.y * H + view.ty * m.depth) % H) + H) % H + Math.cos(m.phase * 0.7) * 6;
       ctx.beginPath();
       ctx.fillStyle = `rgba(220, 200, 160, ${m.a})`;
-      ctx.arc(m.x + ox, m.y + oy, m.r, 0, Math.PI * 2);
+      ctx.arc(x, y, m.r, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  function drawNutrients() {
+  function drawNutrients(cull) {
+    const tiny = view.s < 0.25;
     for (const n of nutrients) {
       n.pulse += 0.04;
+      if (n.x < cull[0] - 40 || n.x > cull[2] + 40 || n.y < cull[1] - 40 || n.y > cull[3] + 40) continue;
       const throb = 1 + Math.sin(n.pulse) * 0.12;
-      const R = n.r * throb * dotScale;
-
-      const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, R * 4);
-      g.addColorStop(0, "rgba(240, 195, 90, 0.55)");
-      g.addColorStop(0.35, "rgba(212, 162, 76, 0.22)");
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, R * 4, 0, Math.PI * 2);
-      ctx.fill();
-
+      // keep a minimum on-screen size when zoomed far out
+      const R = Math.max(n.r * throb * dotScale, (tiny ? 2.2 : 0) / view.s);
+      if (!tiny) {
+        const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, R * 4);
+        g.addColorStop(0, "rgba(240, 195, 90, 0.55)");
+        g.addColorStop(0.35, "rgba(212, 162, 76, 0.22)");
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(n.x, n.y, R * 4, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.beginPath();
       ctx.fillStyle = "rgba(255, 220, 140, 0.95)";
       ctx.arc(n.x, n.y, R * 0.55, 0, Math.PI * 2);
       ctx.fill();
-      ctx.beginPath();
-      ctx.fillStyle = "rgba(255, 245, 210, 0.9)";
-      ctx.arc(n.x - R * 0.15, n.y - R * 0.15, R * 0.22, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawTips() {
-    for (const tip of tips) {
-      const r = (1.2 + tip.thickness * 0.6 + tip.glow * 2) * dotScale;
-      ctx.beginPath();
-      ctx.fillStyle = tip.glow > 0.05
-        ? `rgba(255, 230, 170, ${0.55 + tip.glow * 0.4})`
-        : "rgba(240, 230, 210, 0.75)";
-      ctx.arc(tip.x, tip.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (tip.glow > 0.1) {
+      if (!tiny) {
         ctx.beginPath();
-        ctx.fillStyle = `rgba(255, 210, 120, ${tip.glow * 0.25})`;
-        ctx.arc(tip.x, tip.y, r * 4, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 245, 210, 0.9)";
+        ctx.arc(n.x - R * 0.15, n.y - R * 0.15, R * 0.22, 0, Math.PI * 2);
         ctx.fill();
       }
     }
+  }
+
+  function drawTips(cull) {
+    // batched: one path for plain tips, one for glowing
+    const plain = new Path2D(), hot = new Path2D(), halo = new Path2D();
+    const minR = 0.9 / view.s;       // at least ~1 screen px when zoomed out
+    const small = view.s < 0.4;
+    for (const tip of tips) {
+      if (tip.x < cull[0] || tip.x > cull[2] || tip.y < cull[1] || tip.y > cull[3]) continue;
+      const r = Math.max(minR, (1.2 + tip.thickness * 0.6 + tip.glow * 2) * dotScale);
+      const tgt = tip.glow > 0.05 ? hot : plain;
+      if (small) tgt.rect(tip.x - r, tip.y - r, r * 2, r * 2);
+      else { tgt.moveTo(tip.x + r, tip.y); tgt.arc(tip.x, tip.y, r, 0, Math.PI * 2); }
+      if (tip.glow > 0.1 && !small) { halo.moveTo(tip.x + r * 4, tip.y); halo.arc(tip.x, tip.y, r * 4, 0, Math.PI * 2); }
+    }
+    ctx.fillStyle = "rgba(240, 230, 210, 0.75)"; ctx.fill(plain);
+    ctx.fillStyle = "rgba(255, 230, 170, 0.85)"; ctx.fill(hot);
+    ctx.fillStyle = "rgba(255, 210, 120, 0.12)"; ctx.fill(halo);
   }
 
   function drawPulses(dt) {
@@ -1065,10 +1262,8 @@
       if (p.life <= 0 || p.r > p.max) continue;
       const a = p.life * 0.45;
       ctx.beginPath();
-      ctx.strokeStyle = p.color === "gold"
-        ? `rgba(240, 195, 90, ${a})`
-        : `rgba(232, 220, 200, ${a * 0.8})`;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = p.color === "gold" ? `rgba(240, 195, 90, ${a})` : `rgba(232, 220, 200, ${a * 0.8})`;
+      ctx.lineWidth = Math.max(1.5, 1 / view.s);
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.stroke();
       keep.push(p);
@@ -1076,16 +1271,12 @@
     pulses = keep;
   }
 
-  function drawSporeMarkers() {
-    // faint rings where tips originated aren't tracked; skip
-  }
-
   function updateStats() {
+    if (frame % 6) return;
     elTips.textContent = String(tips.length);
     elHyphae.textContent = String(hyphaCount);
     elNutrients.textContent = String(nutrients.length);
   }
-
 
   // ---------------------------------------------------------------------------
   // Hum: a warm Web Audio drone that swells with the growing network.
@@ -1322,19 +1513,25 @@
       tokens = Math.min(tokens + GRAIN_CAP * dt, Math.max(1, GRAIN_CAP * 0.2));
       const nT = tipsArr.length;
       const off = (Math.random() * nT) | 0;
-      for (let j = 0; j < nT && tokens >= 1; j++) {
+      // with huge colonies, scan a random window and scale the odds to match
+      const scan = Math.min(nT, 4000), scale = nT / scan;
+      for (let j = 0; j < scan && tokens >= 1; j++) {
         const t = tipsArr[(j + off) % nT];
-        if (Math.random() < (t.spd * dt) / PX_PER_GRAIN) { fireGrain(t, now); tokens -= 1; }
+        if (Math.random() < (t.spd * dt * scale) / PX_PER_GRAIN) { fireGrain(t, now); tokens -= 1; }
       }
 
       // --- Voice pool: ~12 Hz reselection of the most prominent tips
       if (now - lastSelect < 0.08) return;
       lastSelect = now;
       const top = [];  // small sorted list by prominence
-      for (let i = 0; i < nT; i++) {
+      const selStep = Math.max(1, Math.floor(nT / 6000));   // sample huge colonies
+      for (let i = (Math.random() * selStep) | 0; i < nT; i += selStep) {
         const t = tipsArr[i];
         if (t.spd <= 1) continue;
-        const pr = (0.35 + tipSizeN(t)) * (0.4 + tipSpeedN(t)) + t.glow;
+        const sx = t.x * view.s + view.tx, sy = t.y * view.s + view.ty;
+        const vis = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
+        // visible tips always win; off-screen ones only fill in if too few are visible
+        const pr = (0.35 + tipSizeN(t)) * (0.4 + tipSpeedN(t)) + t.glow + (vis ? 10 : 0);
         if (top.length < POOL) { top.push([pr, t]); top.sort((a, b) => b[0] - a[0]); }
         else if (pr > top[POOL - 1][0]) { top[POOL - 1] = [pr, t]; top.sort((a, b) => b[0] - a[0]); }
       }
@@ -1369,6 +1566,8 @@
         v.level = vol * (0.35 + 0.9 * sz) * (0.6 + 0.4 * n);
         v.g.gain.setTargetAtTime(v.level, now, 0.15);
         if (v.pan) v.pan.pan.setTargetAtTime(clamp((screenXN(t.x) - 0.5) * 1.6, -0.9, 0.9), now, 0.1);
+        const sx = t.x * view.s + view.tx, sy = t.y * view.s + view.ty;
+        v.onScreen = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
       }
     }
 
@@ -1511,6 +1710,7 @@
           tipIntensity: tipInt,
           voicePool: POOL,
           activeVoices: pool.filter(v => v.tipId).length,
+          voicesOnScreen: pool.filter(v => v.tipId && v.onScreen).length,
           grainCap: GRAIN_CAP,
           grainsPerSec,
           grainsTotal,
@@ -1521,64 +1721,45 @@
     };
   })();
 
+  let fpsEMA = 60;
   function tick(ts) {
     if (!lastT) lastT = ts;
     let dt = (ts - lastT) / 1000;
     lastT = ts;
+    if (dt > 0) fpsEMA += (1 / Math.max(dt, 1e-3) - fpsEMA) * 0.05;
     dt = Math.min(dt, 0.05);
     frame++;
 
     const speedMul = parseFloat(speedSlider.value);
     const branchMul = parseFloat(branchSlider.value);
-
     const nowMs = performance.now();
     stepViewAnim(nowMs);
-    dotScale = 1 / Math.sqrt(Math.max(1, zoomRel()));  // dots don't balloon when zoomed in
+    dotScale = 1 / Math.sqrt(Math.max(1, view.s));  // dots don't balloon when zoomed in
 
     if (running) {
-      // Substep if fast
       const steps = speedMul > 1.6 ? 2 : 1;
-      for (let s = 0; s < steps; s++) {
-        updateTips(dt / steps, speedMul, branchMul);
-      }
+      for (let s = 0; s < steps; s++) updateTips(dt / steps, speedMul, branchMul);
     }
     flushPendingCrisp();
 
-    // Crisp re-render once the view has settled while zoomed in (time-sliced)
+    // Sharp re-render once the view has settled while zoomed in (time-sliced)
     const settled = !viewAnim && !gestureActive() && nowMs - lastViewChange > 160;
-    if (settled && zoomRel() > CRISP_Z && !crispValid && !rebuild) startRebuild();
-    if (rebuild) stepRebuild(SMALL_SCREEN() ? 5 : 7);
-    else bakeStep(2);
+    if (settled && crispWanted() && !rebuild &&
+        (!crispValid || (needCrispRefresh && nowMs - lastRebuildEnd > 1000))) startRebuild();
+    if (rebuild) stepRebuild(LIGHT ? 5 : 7);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawSoilBackground();
-    viewXform(ctx, view);
-    if (zoomRel() < 0.999) {
-      // world edge when zoomed out
-      ctx.strokeStyle = "rgba(212, 162, 76, 0.18)";
-      ctx.lineWidth = 1 / view.s;
-      ctx.strokeRect(0, 0, WW, WH);
-    }
     drawMotes(dt);
-
-    // Hyphae: sharp re-render when available, else the world raster
-    if (crispShown()) {
-      ctx.drawImage(baked, 0, 0, WW, WH);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(crisp, 0, 0);
-      viewXform(ctx, view);
-      drawPendingLive();
-      drawTipTails();
-    } else {
-      ctx.drawImage(trail, 0, 0, WW, WH);
-    }
-
-    drawNutrients();
-    drawTips();
+    drawHyphae(nowMs);
+    pyramidTick(LIGHT ? 1.5 : 2.5);
+    const cull = viewCull(view);
+    drawNutrients(cull);
+    drawTips(cull);
     drawPulses(dt);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     updateStats();
-    Hum.update(dt, tips.length, hyphaCount, MAX_TIPS, running);
+    Hum.update(dt, tips.length, hyphaCount, NORM_TIPS, running);
     Hum.tipLayer(dt, tips, running ? spreadAccum : 0, running);
     spreadAccum = 0;
 
@@ -1869,6 +2050,19 @@
       resize();   // world stays put; the camera re-fits around the screen centre
     });
   }
+  // Keep the shortcut hint clear of the control panel on narrower desktop windows:
+  // if they'd collide, lift the hint to sit just above the panel.
+  const hintEl = document.querySelector(".hint"), panelEl = document.querySelector(".panel");
+  function layoutHint() {
+    hintEl.style.bottom = "";
+    if (getComputedStyle(hintEl).display === "none") return;
+    const h = hintEl.getBoundingClientRect(), pn = panelEl.getBoundingClientRect();
+    const overlap = !(h.right <= pn.left || pn.right <= h.left || h.bottom <= pn.top || pn.bottom <= h.top);
+    if (overlap) hintEl.style.bottom = (window.innerHeight - pn.top + 10) + "px";
+  }
+  window.addEventListener("resize", () => requestAnimationFrame(layoutHint));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(layoutHint);
+  requestAnimationFrame(layoutHint);
   window.addEventListener("resize", queueResize);
   window.addEventListener("orientationchange", () => { queueResize(); setTimeout(queueResize, 250); });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", queueResize);
@@ -1886,15 +2080,31 @@
       hyphae: hyphaCount,
       running,
       mode,
-      maxTips: MAX_TIPS,
+      maxTips: -1,
+      maxDist,
+      simBudget: SIM_BUDGET,
+      bbox: { ...bb },
+      fps: fpsEMA,
       W, H, dpr,
       canvasW: canvas.width,
       canvasH: canvas.height,
     }),
     // Camera / render debug + helpers for tests
-    getView: () => ({ s: view.s, tx: view.tx, ty: view.ty, zoom: view.s / fitS, fitS, WW, WH, animating: !!viewAnim }),
-    getRender: () => ({ crispShown: crispShown(), crispValid, rebuilding: !!rebuild, histSegs, chunks: chunks.length,
-                        lastRebuildMs, rebuilds, epoch, blooms: blooms.length }),
+    getView: () => ({ s: view.s, tx: view.tx, ty: view.ty, zoom: view.s, animating: !!viewAnim, fit: fitTarget() }),
+    getRender: () => {
+      let upper = 0; for (let L = 1; L <= MAXL; L++) upper += levels[L].size;
+      const tiles0 = levels[0].size;
+      return { crispShown: crispShown(), crispValid, rebuilding: !!rebuild, level: lastLevel, visibleTiles: visCount,
+               tiles0, upperTiles: upper, upperCanvases, upperReleased,
+               canvases, ...(() => { let h = 0, gh = 0; for (const t of levels[0].values()) if (!t.c) { if (t.vecOK && t.vn) h++; else gh++; } return { hibernated: h, ghosts: gh }; })(), restores,
+               rasterMB: +((canvases * TPX * TPX * 4) / 1048576).toFixed(1),
+               vecSegs: vecTotal, vecMB: +((vecFloats * 4) / 1048576).toFixed(1),
+               vecTiles: [...levels[0].values()].filter(t => t.vecOK).length,
+               soilCells: soil.size, lastRebuildMs, rebuilds, tileBuilds, epoch, crispTiles: crispTiles.length };
+    },
+    tileAt: (x, y) => { const t = levels[0].get(tkey(0, Math.floor(x / TILE), Math.floor(y / TILE))); return t ? { x: t.x, y: t.y, vn: t.vn, vecOK: t.vecOK } : null; },
+    // [count, unbuilt, dirty] per pyramid level (level 0: [with raster, released])
+    pyramid: () => { const out = {}; for (let L = 1; L <= 6; L++) { let n = 0, noc = 0, dq = 0; for (const t of levels[L].values()) { n++; if (!t.c) noc++; if (t.dirtyQ) dq++; } out[L] = [n, noc, dq]; } let h0 = 0, c0 = 0; for (const t of levels[0].values()) { if (t.c) c0++; else h0++; } out[0] = [c0, h0]; return out; },
     screenToWorld: (x, y) => screenToWorld(x, y),
     worldToScreen: (x, y) => worldToScreen(x, y),
     zoomAt: (x, y, f) => zoomAt(x, y, f),
@@ -1903,6 +2113,7 @@
     setMode: (m) => setMode(m),
     lastNutrient: () => { const n = nutrients[nutrients.length - 1]; return n ? { x: n.x, y: n.y } : null; },
     tipIds: () => tips.map(t => t.id),
+    visibleTipCount: () => tips.filter(t => t.spd > 1 && t.x * view.s + view.tx >= 0 && t.x * view.s + view.tx <= W && t.y * view.s + view.ty >= 0 && t.y * view.s + view.ty <= H).length,
     // Read-only audio snapshot (gain values, smoothed growth level)
     getAudio: () => Hum.debug(),
     // Fast-forward N sim steps without waiting on rAF wall clock
