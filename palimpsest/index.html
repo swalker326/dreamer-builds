@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palimpsest</title>
+<style>
+  :root {
+    --paper: #f3e6c8;
+    --paper-deep: #e8d4a8;
+    --ink: #2a2118;
+    --ink-faint: rgba(42, 33, 24, 0.18);
+    --accent: #8b4513;
+    --panel: #2c2419;
+    --panel-ink: #f0e6d0;
+    --ghost: rgba(90, 60, 30, 0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #1a1510;
+    color: var(--ink);
+    font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  }
+  body {
+    display: flex; flex-direction: column;
+    min-height: 100%;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    padding: 12px 18px;
+    background: linear-gradient(180deg, #2a2118, #1f1812);
+    color: var(--panel-ink);
+    border-bottom: 1px solid #3d3226;
+  }
+  header h1 {
+    margin: 0; font-weight: 400; letter-spacing: 0.28em;
+    font-size: 0.95rem; text-transform: uppercase;
+  }
+  header .sub { color: #a89880; font-size: 0.8rem; font-style: italic; flex: 1; min-width: 140px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, .toggle {
+    font-family: inherit; font-size: 0.78rem; letter-spacing: 0.06em;
+    text-transform: uppercase; cursor: pointer;
+    border: 1px solid #6b5840; background: #3a2f22; color: #f0e6d0;
+    padding: 7px 12px; border-radius: 4px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover, .toggle:hover { background: #4a3c2c; border-color: #8b7355; }
+  button:active { transform: translateY(1px); }
+  button.active, .toggle.active {
+    background: #8b5a2b; border-color: #c4a070; color: #fff8e8;
+  }
+  button.ghost-btn { opacity: 0.7; }
+  .hint { font-size: 0.72rem; color: #8a7a65; letter-spacing: 0.04em; }
+  main {
+    flex: 1; display: grid;
+    grid-template-columns: 1fr minmax(220px, 300px);
+    gap: 0; min-height: 0;
+  }
+  @media (max-width: 780px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  }
+  .stage-wrap {
+    position: relative; padding: 28px 24px 36px;
+    display: flex; justify-content: center; align-items: stretch;
+    background:
+      radial-gradient(ellipse at 30% 20%, #2a2218 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #1e1812 0%, transparent 45%),
+      #16120e;
+    overflow: hidden;
+  }
+  .parchment {
+    position: relative;
+    width: min(720px, 100%);
+    min-height: 520px;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 28px,
+        rgba(139, 90, 43, 0.04) 28px,
+        rgba(139, 90, 43, 0.04) 29px
+      ),
+      linear-gradient(135deg, #f6ebcf 0%, #edd9ad 40%, #e6d0a0 70%, #dfc690 100%);
+    box-shadow:
+      0 0 0 1px rgba(90, 60, 30, 0.25),
+      0 18px 50px rgba(0,0,0,0.55),
+      inset 0 0 80px rgba(139, 90, 43, 0.12),
+      inset 0 0 20px rgba(255, 240, 200, 0.35);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .parchment::before {
+    content: "";
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    mix-blend-mode: multiply;
+  }
+  .parchment::after {
+    content: "";
+    position: absolute; inset: 0; pointer-events: none; z-index: 6;
+    background:
+      radial-gradient(ellipse at 10% 5%, rgba(120,70,30,0.18), transparent 40%),
+      radial-gradient(ellipse at 90% 95%, rgba(90,50,20,0.22), transparent 45%),
+      radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(80,50,20,0.12) 100%);
+  }
+  .ghosts {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    overflow: hidden;
+  }
+  .stratum {
+    position: absolute; inset: 36px 40px 40px;
+    white-space: pre-wrap; word-wrap: break-word;
+    font-size: 1.28rem; line-height: 1.75;
+    color: rgba(70, 45, 20, 0.28);
+    font-family: inherit;
+    transition: opacity 0.45s ease, filter 0.45s ease, color 0.45s;
+    will-change: transform, opacity;
+  }
+  .stratum.fading { }
+  body.excavate .stratum {
+    color: rgba(55, 35, 15, 0.55);
+  }
+  body.excavate .stratum:nth-last-child(1) { opacity: 1 !important; }
+  body.excavate .stratum:nth-last-child(2) { opacity: 0.9 !important; }
+  body.excavate .stratum:nth-last-child(3) { opacity: 0.75 !important; }
+  .writer {
+    position: relative; z-index: 3;
+    width: 100%; min-height: 520px;
+    padding: 36px 40px 40px;
+    border: none; outline: none; resize: none;
+    background: transparent;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1.28rem; line-height: 1.75;
+    caret-color: #5c3a1a;
+  }
+  body.excavate .writer {
+    color: rgba(42, 33, 24, 0.28);
+  }
+  .writer::placeholder { color: rgba(90, 60, 30, 0.35); font-style: italic; }
+  .ink-bleed {
+    position: absolute; z-index: 4; pointer-events: none;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(42,33,24,0.35), transparent 70%);
+    animation: bleed 0.7s ease-out forwards;
+  }
+  @keyframes bleed {
+    0% { transform: scale(0.4); opacity: 0.7; }
+    100% { transform: scale(3.5); opacity: 0; }
+  }
+  aside.panel {
+    background: var(--panel);
+    color: var(--panel-ink);
+    border-left: 1px solid #3d3226;
+    padding: 20px 18px;
+    display: flex; flex-direction: column; gap: 14px;
+    overflow-y: auto;
+  }
+  aside h2 {
+    margin: 0; font-weight: 400; letter-spacing: 0.2em;
+    font-size: 0.75rem; text-transform: uppercase; color: #c4a880;
+  }
+  .poem {
+    flex: 1;
+    font-size: 1.05rem; line-height: 1.7;
+    font-style: italic;
+    color: #efe4cb;
+    min-height: 120px;
+    white-space: pre-wrap;
+  }
+  .poem.empty { color: #7a6a55; font-style: italic; font-size: 0.9rem; }
+  .meta {
+    font-size: 0.72rem; color: #8a7a65;
+    border-top: 1px solid #3d3226; padding-top: 12px;
+  }
+  .strata-list {
+    list-style: none; margin: 0; padding: 0;
+    font-size: 0.78rem; color: #b0a08a;
+    max-height: 140px; overflow-y: auto;
+  }
+  .strata-list li {
+    padding: 4px 0; border-bottom: 1px solid #3a3026;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .scrub {
+    width: 100%; accent-color: #8b5a2b;
+  }
+  .scrub-row { display: flex; flex-direction: column; gap: 6px; }
+  .scrub-row label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: #a89880; }
+  footer {
+    padding: 8px 18px; font-size: 0.7rem; color: #6a5a48;
+    background: #14100c; border-top: 1px solid #2a2218;
+    text-align: center;
+  }
+  kbd {
+    font-family: ui-monospace, monospace; font-size: 0.85em;
+    background: #3a2f22; padding: 1px 5px; border-radius: 3px;
+    border: 1px solid #5a4a38;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Palimpsest</h1>
+  <span class="sub">Writing that remembers what you erased</span>
+  <div class="toolbar">
+    <button type="button" id="btnExcavate" title="Hold E or click to excavate layers">Excavate</button>
+    <button type="button" id="btnHarvest">Harvest poem</button>
+    <button type="button" id="btnClear" class="ghost-btn" title="Clear writing (keeps ghosts)">Clear page</button>
+    <button type="button" id="btnWipe" class="ghost-btn" title="Erase all strata">Wipe all</button>
+    <button type="button" id="btnSound" title="Toggle quill sound">Sound: off</button>
+  </div>
+  <span class="hint">Click Excavate or <kbd>Alt</kbd>+<kbd>E</kbd> · edits leave ghost strata</span>
+</header>
+<main>
+  <div class="stage-wrap">
+    <div class="parchment" id="parchment">
+      <div class="ghosts" id="ghosts" aria-hidden="true"></div>
+      <textarea id="writer" class="writer" spellcheck="false"
+        placeholder="Begin writing… delete, rewrite, revise — the discarded words linger beneath."></textarea>
+    </div>
+  </div>
+  <aside class="panel">
+    <h2>Found poem</h2>
+    <div class="poem empty" id="poem">Harvest after a few edits to compose a found poem from the ghosts.</div>
+    <div class="scrub-row" id="scrubRow" hidden>
+      <label for="scrub">Excavate depth</label>
+      <input type="range" id="scrub" class="scrub" min="0" max="100" value="70">
+    </div>
+    <h2>Strata</h2>
+    <ul class="strata-list" id="strataList">
+      <li><span>No layers yet</span></li>
+    </ul>
+    <div class="meta" id="meta">0 strata · type and revise to leave ghosts</div>
+  </aside>
+</main>
+<footer>Day 4 · Dreamer Builds · entirely offline · no network required</footer>
+<script>
+(function () {
+  "use strict";
+
+  const MAX_STRATA = 24;
+  const CAPTURE_DEBOUNCE_MS = 420;
+  const MIN_DELTA_CHARS = 3;
+
+  const writer = document.getElementById("writer");
+  const ghosts = document.getElementById("ghosts");
+  const parchment = document.getElementById("parchment");
+  const poemEl = document.getElementById("poem");
+  const strataList = document.getElementById("strataList");
+  const meta = document.getElementById("meta");
+  const btnExcavate = document.getElementById("btnExcavate");
+  const btnHarvest = document.getElementById("btnHarvest");
+  const btnClear = document.getElementById("btnClear");
+  const btnWipe = document.getElementById("btnWipe");
+  const btnSound = document.getElementById("btnSound");
+  const scrub = document.getElementById("scrub");
+  const scrubRow = document.getElementById("scrubRow");
+
+  /** @type {{id:number,text:string,born:number,ox:number,oy:number,rot:number,seed:number}[]} */
+  let strata = [];
+  let nextId = 1;
+  let lastCaptured = "";
+  let captureTimer = null;
+  let excavating = false;
+  let soundOn = false;
+  let audioCtx = null;
+  let driftRaf = 0;
+  let historySeed = 0x9e3779b9;
+
+  function hashStr(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function mulberry32(a) {
+    return function () {
+      let t = (a += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function captureIfNeeded(force) {
+    const text = writer.value;
+    if (!force && text === lastCaptured) return;
+    const a = lastCaptured;
+    const b = text;
+    if (!force) {
+      const dist = Math.abs(a.length - b.length);
+      // also capture if substantial content change (rewrite)
+      let samePrefix = 0;
+      const lim = Math.min(a.length, b.length);
+      while (samePrefix < lim && a[samePrefix] === b[samePrefix]) samePrefix++;
+      const changed = Math.max(a.length, b.length) - samePrefix;
+      if (dist < MIN_DELTA_CHARS && changed < MIN_DELTA_CHARS) return;
+      if (!a.trim()) { lastCaptured = text; return; }
+    }
+    if (!a.trim() && !force) { lastCaptured = text; return; }
+
+    const seed = hashStr(a + "|" + nextId + "|" + historySeed) ^ (strata.length * 2654435761);
+    const rng = mulberry32(seed);
+    const layer = {
+      id: nextId++,
+      text: a,
+      born: performance.now(),
+      ox: (rng() - 0.5) * 10,
+      oy: (rng() - 0.5) * 8,
+      rot: (rng() - 0.5) * 1.2,
+      seed,
+      driftAmp: 2 + rng() * 3,
+      driftPhase: rng() * Math.PI * 2,
+      driftSpeed: 0.00015 + rng() * 0.00025,
+    };
+    strata.push(layer);
+    historySeed = (historySeed ^ seed) >>> 0;
+    if (strata.length > MAX_STRATA) strata.shift();
+    lastCaptured = text;
+    renderGhosts();
+    updateStrataUI();
+  }
+
+  function scheduleCapture() {
+    clearTimeout(captureTimer);
+    captureTimer = setTimeout(() => captureIfNeeded(false), CAPTURE_DEBOUNCE_MS);
+  }
+
+  function renderGhosts() {
+    const now = performance.now();
+    ghosts.innerHTML = "";
+    const depth = excavating ? (Number(scrub.value) / 100) : 0;
+    strata.forEach((s, i) => {
+      const age = (now - s.born) / 1000;
+      // fade slowly toward a floor — never fully vanish for a long time
+      const baseOpacity = Math.max(0.08, 0.42 * Math.exp(-age / 180));
+      const excavBoost = excavating
+        ? 0.15 + depth * (0.55 * ((i + 1) / strata.length))
+        : 0;
+      const opacity = Math.min(0.85, baseOpacity + excavBoost);
+      const el = document.createElement("div");
+      el.className = "stratum";
+      el.dataset.id = String(s.id);
+      el.textContent = s.text;
+      const t = now * s.driftSpeed + s.driftPhase;
+      const dx = s.ox + Math.sin(t) * s.driftAmp;
+      const dy = s.oy + Math.cos(t * 0.87) * s.driftAmp * 0.7;
+      el.style.opacity = String(opacity);
+      el.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) rotate(${s.rot}deg)`;
+      ghosts.appendChild(el);
+    });
+  }
+
+  function updateStrataUI() {
+    if (!strata.length) {
+      strataList.innerHTML = "<li><span>No layers yet</span></li>";
+      meta.textContent = "0 strata · type and revise to leave ghosts";
+      return;
+    }
+    strataList.innerHTML = strata
+      .slice()
+      .reverse()
+      .slice(0, 12)
+      .map((s) => {
+        const preview = s.text.trim().slice(0, 36).replace(/\s+/g, " ") || "(blank)";
+        return `<li><span>${escapeHtml(preview)}${s.text.trim().length > 36 ? "…" : ""}</span><span>#${s.id}</span></li>`;
+      })
+      .join("");
+    meta.textContent = `${strata.length} strata · seed ${historySeed.toString(16)}`;
+  }
+
+  function escapeHtml(t) {
+    return t.replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+    );
+  }
+
+  function setExcavate(on) {
+    excavating = on;
+    document.body.classList.toggle("excavate", on);
+    btnExcavate.classList.toggle("active", on);
+    scrubRow.hidden = !on;
+    renderGhosts();
+  }
+
+  // —— Found poem (deterministic) ——
+  const CONNECTORS = ["—", "·", ",", ";", "and", "or", "yet", "still", "beneath", "after"];
+  const LINE_STARTS = ["", "where ", "what ", "once ", "under ", "from ", "toward "];
+
+  function tokenize(text) {
+    return text
+      .replace(/[^\w\s'’-]/g, " ")
+      .split(/\s+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 1);
+  }
+
+  function harvestPoem() {
+    // Include current text as shallowest layer for richer harvest
+    const layers = strata.map((s) => s.text).concat(writer.value ? [writer.value] : []);
+    if (!layers.some((t) => t.trim())) {
+      poemEl.className = "poem empty";
+      poemEl.textContent = "Nothing to harvest yet — write, then erase or revise.";
+      return;
+    }
+    const corpus = layers.join("\n");
+    const seed = hashStr(corpus + "|" + historySeed + "|" + strata.length);
+    const rng = mulberry32(seed);
+
+    const allWords = [];
+    const phrases = [];
+    layers.forEach((text, li) => {
+      const words = tokenize(text);
+      words.forEach((w) => allWords.push({ w, li }));
+      // extract 2–4 word fragments
+      for (let i = 0; i < words.length - 1; i++) {
+        const len = 2 + Math.floor(rng() * 3);
+        if (i + len <= words.length) {
+          phrases.push({ p: words.slice(i, i + len).join(" "), li });
+        }
+      }
+    });
+
+    if (!allWords.length) {
+      poemEl.className = "poem empty";
+      poemEl.textContent = "Only silence in the strata.";
+      return;
+    }
+
+    const lineCount = 3 + Math.floor(rng() * 3); // 3–5
+    const lines = [];
+    const used = new Set();
+    // Prefer longer, more readable phrases from older strata
+    const ranked = phrases.slice().sort((a, b) => b.p.length - a.p.length);
+
+    for (let L = 0; L < lineCount; L++) {
+      let chunk = "";
+      if (ranked.length) {
+        let pick = null;
+        for (let tries = 0; tries < 30; tries++) {
+          const cand = ranked[Math.floor(rng() * Math.min(ranked.length, 18 + L * 4))];
+          if (!used.has(cand.p.toLowerCase())) { pick = cand; break; }
+        }
+        if (pick) {
+          used.add(pick.p.toLowerCase());
+          chunk = pick.p;
+        }
+      }
+      if (!chunk) {
+        const n = 3 + Math.floor(rng() * 2);
+        const parts = [];
+        for (let i = 0; i < n; i++) {
+          parts.push(allWords[Math.floor(rng() * allWords.length)].w);
+        }
+        chunk = parts.join(" ");
+      }
+      chunk = chunk.toLowerCase();
+      let line = chunk;
+      if (rng() > 0.65) {
+        const start = LINE_STARTS[1 + Math.floor(rng() * (LINE_STARTS.length - 1))];
+        // only prepend if chunk doesn't already start similarly
+        if (!chunk.startsWith(start.trim())) line = start + chunk;
+      }
+      if (rng() > 0.7) {
+        const c = CONNECTORS[Math.floor(rng() * 3)]; // prefer — · ,
+        line = line + " " + c;
+      }
+      line = line.replace(/\s+/g, " ").trim().replace(/[—,·;]+$/, "").trim();
+      line = line.charAt(0).toUpperCase() + line.slice(1);
+      lines.push(line);
+    }
+
+    poemEl.className = "poem";
+    poemEl.textContent = lines.join("\n");
+  }
+
+  // —— Ink bleed visual ——
+  function spawnBleed(clientX, clientY) {
+    const rect = parchment.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const d = document.createElement("div");
+    d.className = "ink-bleed";
+    d.style.left = x - 3 + "px";
+    d.style.top = y - 3 + "px";
+    parchment.appendChild(d);
+    setTimeout(() => d.remove(), 750);
+  }
+
+  // —— Soft quill click ——
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playQuill() {
+    if (!soundOn) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(180 + Math.random() * 90, t0);
+    osc.frequency.exponentialRampToValueAtTime(90, t0 + 0.04);
+    filter.type = "highpass";
+    filter.frequency.value = 400;
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.03, t0 + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.07);
+  }
+
+  // —— Drift loop ——
+  function driftLoop() {
+    renderGhosts();
+    driftRaf = requestAnimationFrame(driftLoop);
+  }
+
+  // —— Events ——
+  writer.addEventListener("input", (e) => {
+    scheduleCapture();
+    playQuill();
+    // approximate caret position for bleed using textarea selection
+    // use a rough center-ish bleed near click if available
+  });
+
+  writer.addEventListener("keydown", (e) => {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      // capture promptly on deletes so ghosts retain deleted content
+      clearTimeout(captureTimer);
+      captureTimer = setTimeout(() => captureIfNeeded(false), 180);
+    }
+  });
+
+  // Before major delete selections, snapshot immediately
+  writer.addEventListener("beforeinput", (e) => {
+    if (
+      e.inputType === "deleteContentBackward" ||
+      e.inputType === "deleteContentForward" ||
+      e.inputType === "deleteByCut" ||
+      e.inputType === "deleteByDrag" ||
+      e.inputType === "insertFromPaste" ||
+      e.inputType === "historyUndo"
+    ) {
+      captureIfNeeded(true);
+    }
+  });
+
+  writer.addEventListener("keyup", (e) => {
+    // ink bleed near approximate writing area center-left of caret — use selection end heuristic
+    if (e.key.length === 1 || e.key === "Enter") {
+      const rect = writer.getBoundingClientRect();
+      // rough position: estimate from caret via mirror (lightweight)
+      const pos = estimateCaretPixel();
+      if (pos) spawnBleed(pos.x, pos.y);
+      else spawnBleed(rect.left + 60 + Math.random() * 40, rect.top + 50 + Math.random() * 30);
+    }
+  });
+
+  function estimateCaretPixel() {
+    // Mirror technique
+    const div = document.createElement("div");
+    const style = getComputedStyle(writer);
+    const props = [
+      "fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing",
+      "lineHeight", "padding", "border", "boxSizing", "width", "whiteSpace",
+      "wordWrap", "overflowWrap",
+    ];
+    div.style.position = "absolute";
+    div.style.visibility = "hidden";
+    div.style.whiteSpace = "pre-wrap";
+    div.style.wordWrap = "break-word";
+    props.forEach((p) => { div.style[p] = style[p]; });
+    div.style.width = writer.clientWidth + "px";
+    const text = writer.value.substring(0, writer.selectionEnd);
+    div.textContent = text;
+    const span = document.createElement("span");
+    span.textContent = "\u200b";
+    div.appendChild(span);
+    document.body.appendChild(div);
+    const rect = writer.getBoundingClientRect();
+    const srect = span.getBoundingClientRect();
+    const drect = div.getBoundingClientRect();
+    const x = rect.left + (srect.left - drect.left);
+    const y = rect.top + (srect.top - drect.top) - writer.scrollTop;
+    div.remove();
+    return { x, y };
+  }
+
+  let excavateLocked = false;
+  let eKeyHeld = false;
+  btnExcavate.addEventListener("click", () => {
+    excavateLocked = !excavateLocked;
+    setExcavate(excavateLocked);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "e" || e.key === "E") {
+      if (e.target === writer && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        // allow typing e in writer — excavate via Alt+E or button
+        if (!e.altKey) return;
+      }
+      if (e.repeat) return;
+      if (e.altKey || e.target !== writer) {
+        eKeyHeld = true;
+        setExcavate(true);
+        e.preventDefault();
+      }
+    }
+    if (e.key === "e" && e.altKey) {
+      eKeyHeld = true;
+      setExcavate(true);
+      e.preventDefault();
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "e" || e.key === "E") {
+      eKeyHeld = false;
+      if (!excavateLocked) setExcavate(false);
+    }
+  });
+
+  // Dedicated excavate: hold Alt+E or use button toggle
+  scrub.addEventListener("input", () => { if (excavating) renderGhosts(); });
+
+  btnHarvest.addEventListener("click", harvestPoem);
+  btnClear.addEventListener("click", () => {
+    captureIfNeeded(true);
+    writer.value = "";
+    lastCaptured = "";
+    writer.focus();
+  });
+  btnWipe.addEventListener("click", () => {
+    strata = [];
+    lastCaptured = writer.value;
+    historySeed = 0x9e3779b9;
+    renderGhosts();
+    updateStrataUI();
+    poemEl.className = "poem empty";
+    poemEl.textContent = "Harvest after a few edits to compose a found poem from the ghosts.";
+  });
+  btnSound.addEventListener("click", () => {
+    soundOn = !soundOn;
+    btnSound.textContent = "Sound: " + (soundOn ? "on" : "off");
+    btnSound.classList.toggle("active", soundOn);
+    if (soundOn) ensureAudio();
+  });
+
+  // Seed demo content for first-time / proof so ghosts are visible
+  function seedDemoIfEmpty() {
+    if (writer.value || strata.length) return;
+    const demo1 =
+      "The river remembered every stone it ever touched,\nand the words we crossed out still hummed under the page.";
+    const demo2 =
+      "The river forgot the names of stones,\nyet something hummed under the page — a quieter current.";
+    writer.value = demo1;
+    lastCaptured = "";
+    captureIfNeeded(true);
+    writer.value = demo2;
+    lastCaptured = demo1;
+    captureIfNeeded(true);
+    writer.value =
+      "We write over what we meant,\nand meaning gathers in the strata like silt.";
+    lastCaptured = demo2;
+    captureIfNeeded(true);
+    harvestPoem();
+    writer.focus();
+    // place caret at end
+    writer.selectionStart = writer.selectionEnd = writer.value.length;
+  }
+
+  // Start
+  updateStrataUI();
+  driftLoop();
+  // Small delay so layout is ready for caret estimates / proof screenshots
+  setTimeout(seedDemoIfEmpty, 50);
+
+  // Expose for Playwright testing
+  window.__palimpsest = {
+    getStrata: () => strata.map((s) => ({ id: s.id, text: s.text })),
+    capture: () => captureIfNeeded(true),
+    harvest: harvestPoem,
+    setExcavate,
+    seedDemoIfEmpty,
+  };
+})();
+</script>
+</body>
+</html>
