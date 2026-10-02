@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Gnomon — Dreamer Day 5</title>
+<style>
+  :root {
+    --bg: #1a1520;
+    --stone: #2a2433;
+    --ink: #e8dcc8;
+    --muted: #8a7f90;
+    --amber: #e8a84a;
+    --amber-soft: #f0c878;
+    --indigo: #3a4570;
+    --shadow: rgba(35, 40, 80, 0.55);
+    --glow: #7ec8a8;
+    --glow-dim: #3a6a58;
+    --rim: #4a3f55;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 12px;
+    gap: 10px;
+  }
+  header {
+    text-align: center;
+    letter-spacing: 0.28em;
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  header strong { color: var(--amber-soft); font-weight: 400; letter-spacing: 0.35em; }
+  #hud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: var(--muted);
+    max-width: 560px;
+  }
+  #hud b { color: var(--ink); font-weight: 400; }
+  #canvas-wrap {
+    position: relative;
+    width: min(92vw, 560px);
+    height: min(92vw, 560px);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    cursor: crosshair;
+    box-shadow: 0 0 0 1px #3a3345, 0 20px 60px rgba(0,0,0,0.45), inset 0 0 80px rgba(0,0,0,0.3);
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    max-width: 560px;
+  }
+  button, .chip {
+    background: #2a2433;
+    border: 1px solid #4a3f55;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  button:hover { border-color: var(--amber); color: var(--amber-soft); }
+  button:disabled { opacity: 0.35; cursor: default; border-color: #3a3345; color: var(--muted); }
+  button.primary { background: #3a2f28; border-color: var(--amber); color: var(--amber-soft); }
+  label.scrub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 140px;
+    height: 4px;
+    background: #3a3345;
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--amber);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(232,168,74,0.5);
+  }
+  #hint {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-align: center;
+    max-width: 480px;
+    line-height: 1.45;
+    min-height: 2.2em;
+  }
+  #win {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    background: rgba(20, 16, 28, 0.72);
+    border-radius: 50%;
+    z-index: 5;
+    backdrop-filter: blur(2px);
+  }
+  #win.show { display: flex; }
+  #win h2 {
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: var(--amber-soft);
+    font-size: 1.1rem;
+  }
+  #win p { color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header><strong>Gnomon</strong> · soft-shadow courtyard</header>
+  <div id="hud">
+    <span>Level <b id="levelNum">1</b>/<span id="levelTotal">6</span></span>
+    <span>Sticks <b id="sticksLeft">2</b></span>
+    <span id="status">Place sticks so shadows cover the stones</span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c" width="720" height="720"></canvas>
+    <div id="win">
+      <h2 id="winTitle">Courtyard quiet</h2>
+      <p id="winSub">All stones found shade.</p>
+      <button class="primary" id="nextBtn">Next level</button>
+    </div>
+  </div>
+  <div class="controls">
+    <label class="scrub">Sun <input type="range" id="sunScrub" min="0" max="1" step="0.001" value="0.25"></label>
+    <button id="playBtn" title="Auto-orbit sun">Play</button>
+    <button id="resetBtn">Reset</button>
+    <button id="muteBtn">Mute</button>
+  </div>
+  <p id="hint">Click empty ground to place a stick · drag to move · scroll or drag the handle to rotate · Delete removes</p>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const CX = W / 2, CY = H / 2;
+  const R = 310; // courtyard radius
+
+  // --- Levels: targets [{x,y,r}], sticks budget, optional hint angle for first level
+  // Coordinates relative to center, in courtyard space
+  const LEVELS = [
+    {
+      name: 'Dawn',
+      sticks: 1,
+      targets: [{ x: 90, y: 40, r: 16 }],
+      sun0: 0.18,
+      tip: 'Place one stick so its shadow sweeps across the glowing stone.'
+    },
+    {
+      name: 'Pair',
+      sticks: 2,
+      targets: [
+        { x: -100, y: 60, r: 15 },
+        { x: 110, y: -50, r: 15 }
+      ],
+      sun0: 0.28,
+      tip: 'Two stones, two sticks. Shadows cast opposite the sun.'
+    },
+    {
+      name: 'Triangle',
+      sticks: 2,
+      targets: [
+        { x: 0, y: -120, r: 14 },
+        { x: -95, y: 70, r: 14 },
+        { x: 95, y: 70, r: 14 }
+      ],
+      sun0: 0.42,
+      tip: 'One stick can shade two stones if you angle the joint carefully.'
+    },
+    {
+      name: 'Crossroads',
+      sticks: 3,
+      targets: [
+        { x: -130, y: 0, r: 13 },
+        { x: 130, y: 0, r: 13 },
+        { x: 0, y: -130, r: 13 },
+        { x: 0, y: 130, r: 13 }
+      ],
+      sun0: 0.12,
+      tip: 'Four directions. Scrub the sun if you need a different shadow length.'
+    },
+    {
+      name: 'Cluster',
+      sticks: 2,
+      targets: [
+        { x: 40, y: 30, r: 12 },
+        { x: 70, y: 55, r: 12 },
+        { x: 55, y: 90, r: 12 },
+        { x: 20, y: 70, r: 12 }
+      ],
+      sun0: 0.55,
+      tip: 'A tight cluster — one long shadow can cover several stones.'
+    },
+    {
+      name: 'Ring',
+      sticks: 3,
+      targets: (() => {
+        const out = [];
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + 0.2;
+          out.push({ x: Math.cos(a) * 150, y: Math.sin(a) * 150, r: 12 });
+        }
+        return out;
+      })(),
+      sun0: 0.33,
+      tip: 'Six stones on a ring. Three sticks, well placed.'
+    },
+    {
+      name: 'Spiral',
+      sticks: 4,
+      targets: [
+        { x: -40, y: -160, r: 12 },
+        { x: 120, y: -80, r: 12 },
+        { x: 140, y: 90, r: 12 },
+        { x: -30, y: 150, r: 12 },
+        { x: -160, y: 20, r: 12 },
+        { x: 10, y: 10, r: 13 }
+      ],
+      sun0: 0.72,
+      tip: 'Last courtyard. Quiet hands, patient sun.'
+    }
+  ];
+
+  let levelIdx = 0;
+  let gnomons = []; // {x, y, angle, len}
+  let selected = -1;
+  let drag = null; // {mode:'move'|'rotate', ox, oy, oa}
+  let sunT = 0.25; // 0..1 day fraction
+  let playing = false;
+  let muted = false;
+  let dwell = []; // per-target coverage accumulator
+  let lit = [];
+  let won = false;
+  let grainCanvas = null;
+
+  const $ = (id) => document.getElementById(id);
+  const levelNum = $('levelNum');
+  const levelTotal = $('levelTotal');
+  const sticksLeft = $('sticksLeft');
+  const statusEl = $('status');
+  const hintEl = $('hint');
+  const sunScrub = $('sunScrub');
+  const playBtn = $('playBtn');
+  const resetBtn = $('resetBtn');
+  const muteBtn = $('muteBtn');
+  const winEl = $('win');
+  const nextBtn = $('nextBtn');
+  const winTitle = $('winTitle');
+
+  levelTotal.textContent = String(LEVELS.length);
+
+  // Audio: soft chime
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {}
+    }
+    return audioCtx;
+  }
+  function chime(freq = 520) {
+    if (muted) return;
+    const ac = ensureAudio();
+    if (!ac) return;
+    const t0 = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    o.frequency.exponentialRampToValueAtTime(freq * 1.5, t0 + 0.35);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.7);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t0); o.stop(t0 + 0.75);
+  }
+
+  function loadLevel(i) {
+    levelIdx = Math.max(0, Math.min(i, LEVELS.length - 1));
+    const L = LEVELS[levelIdx];
+    gnomons = [];
+    selected = -1;
+    drag = null;
+    sunT = L.sun0;
+    sunScrub.value = String(sunT);
+    dwell = L.targets.map(() => 0);
+    lit = L.targets.map(() => false);
+    won = false;
+    winEl.classList.remove('show');
+    playing = false;
+    playBtn.textContent = 'Play';
+    levelNum.textContent = String(levelIdx + 1);
+    hintEl.textContent = L.tip;
+    statusEl.textContent = L.name;
+    updateSticks();
+  }
+
+  function updateSticks() {
+    const left = LEVELS[levelIdx].sticks - gnomons.length;
+    sticksLeft.textContent = String(Math.max(0, left));
+  }
+
+  // Sun: azimuth from sunT (0 = east / right, increases CCW like math angles but we go clockwise for "day")
+  // Day: sun rises east (0), noon south (PI/2 in screen coords where +y is down so south is +y), sets west (PI)
+  function sunAzimuth(t) {
+    // t 0..1 maps sunrise->sunset along southern arc: east to west via south
+    // azimuth: 0 = east (+x), PI/2 = south (+y), PI = west (-x)
+    return t * Math.PI;
+  }
+  function sunElevation(t) {
+    // sine bump: low at dawn/dusk, high at noon
+    const e = Math.sin(t * Math.PI);
+    return 0.22 + 0.55 * e; // radians-ish proxy 0.22..0.77
+  }
+  function shadowLength(elev) {
+    // higher sun → shorter shadow; map elev to length in px
+    return 55 + (1 - elev) * 220;
+  }
+  function gnomonStickLen() {
+    return 48; // visual stick half-length for drawing & soft shadow width source
+  }
+
+  // Soft shadow polygon: capsule from gnomon center elongated away from sun
+  // Also uses stick orientation: the stick is a short segment; shadow is projection of that segment
+  function shadowGeom(g, az, elev) {
+    const L = shadowLength(elev);
+    // Direction away from sun (shadow casts opposite sun)
+    const dx = -Math.cos(az);
+    const dy = -Math.sin(az);
+    // Stick endpoints relative to center (angle = stick orientation)
+    const half = gnomonStickLen() * 0.5;
+    const sx = Math.cos(g.angle) * half;
+    const sy = Math.sin(g.angle) * half;
+    const p1 = { x: g.x - sx, y: g.y - sy };
+    const p2 = { x: g.x + sx, y: g.y + sy };
+    // Far tips of shadow
+    const f1 = { x: p1.x + dx * L, y: p1.y + dy * L };
+    const f2 = { x: p2.x + dx * L, y: p2.y + dy * L };
+    // Soft half-width grows slightly along length
+    const baseW = 10;
+    const tipW = 18;
+    // Perp to shadow direction
+    const px = -dy, py = dx;
+    // Quad with rounded feel via extra mid soft layers drawn separately
+    return {
+      near: [p1, p2],
+      far: [f1, f2],
+      dir: { x: dx, y: dy },
+      perp: { x: px, y: py },
+      L, baseW, tipW,
+      poly: [
+        { x: p1.x + px * baseW, y: p1.y + py * baseW },
+        { x: p2.x - px * baseW, y: p2.y - py * baseW },
+        { x: f2.x - px * tipW, y: f2.y - py * tipW },
+        { x: f1.x + px * tipW, y: f1.y + py * tipW }
+      ]
+    };
+  }
+
+  function pointInPoly(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function distPointSeg(px, py, ax, ay, bx, by) {
+    const abx = bx - ax, aby = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby || 1)));
+    const qx = ax + t * abx, qy = ay + t * aby;
+    return Math.hypot(px - qx, py - qy);
+  }
+
+  function hitGnomon(wx, wy) {
+    for (let i = gnomons.length - 1; i >= 0; i--) {
+      const g = gnomons[i];
+      const half = gnomonStickLen() * 0.5;
+      const ax = g.x - Math.cos(g.angle) * half;
+      const ay = g.y - Math.sin(g.angle) * half;
+      const bx = g.x + Math.cos(g.angle) * half;
+      const by = g.y + Math.sin(g.angle) * half;
+      if (distPointSeg(wx, wy, ax, ay, bx, by) < 14) return i;
+      // rotate handle at tip
+      const hx = g.x + Math.cos(g.angle) * (half + 18);
+      const hy = g.y + Math.sin(g.angle) * (half + 18);
+      if (Math.hypot(wx - hx, wy - hy) < 16) return i | 0x1000; // rotate flag
+    }
+    return -1;
+  }
+
+  function worldFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = ((clientX - rect.left) / rect.width) * W - CX;
+    const y = ((clientY - rect.top) / rect.height) * H - CY;
+    return { x, y };
+  }
+
+  function inCourtyard(x, y) {
+    return Math.hypot(x, y) < R - 18;
+  }
+
+  function makeGrain() {
+    grainCanvas = document.createElement('canvas');
+    grainCanvas.width = W; grainCanvas.height = H;
+    const g = grainCanvas.getContext('2d');
+    const img = g.createImageData(W, H);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = (Math.random() * 255) | 0;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 18;
+    }
+    g.putImageData(img, 0, 0);
+  }
+
+  function draw() {
+    const L = LEVELS[levelIdx];
+    const az = sunAzimuth(sunT);
+    const elev = sunElevation(sunT);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // Background courtyard disk
+    const grd = ctx.createRadialGradient(CX, CY, 40, CX, CY, R);
+    grd.addColorStop(0, '#2e2738');
+    grd.addColorStop(0.7, '#241e2c');
+    grd.addColorStop(1, '#1a1520');
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // Subtle paving rings
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(74,63,85,0.35)';
+    ctx.lineWidth = 1;
+    for (let r = 50; r < R; r += 42) {
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // radial lines
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(CX + Math.cos(a) * 30, CY + Math.sin(a) * 30);
+      ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Rim
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.strokeStyle = '#4a3f55';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.beginPath();
+    ctx.arc(0, 0, R - 1, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Shadows first (soft layers)
+    for (const g of gnomons) {
+      const sg = shadowGeom(g, az, elev);
+      // soft blur layers
+      for (let k = 3; k >= 0; k--) {
+        const expand = k * 6;
+        const alpha = 0.12 - k * 0.02;
+        ctx.beginPath();
+        const poly = sg.poly.map((p, i) => {
+          // expand outward roughly along perp from centroid
+          const cx = (sg.near[0].x + sg.near[1].x + sg.far[0].x + sg.far[1].x) / 4;
+          const cy = (sg.near[0].y + sg.near[1].y + sg.far[0].y + sg.far[1].y) / 4;
+          const vx = p.x - cx, vy = p.y - cy;
+          const len = Math.hypot(vx, vy) || 1;
+          return { x: p.x + (vx / len) * expand, y: p.y + (vy / len) * expand };
+        });
+        ctx.moveTo(poly[0].x, poly[0].y);
+        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(28, 32, 70, ${alpha})`;
+        ctx.fill();
+      }
+      // core shadow
+      ctx.beginPath();
+      ctx.moveTo(sg.poly[0].x, sg.poly[0].y);
+      for (let i = 1; i < sg.poly.length; i++) ctx.lineTo(sg.poly[i].x, sg.poly[i].y);
+      ctx.closePath();
+      const sgFill = ctx.createLinearGradient(
+        sg.near[0].x, sg.near[0].y,
+        sg.far[0].x, sg.far[0].y
+      );
+      sgFill.addColorStop(0, 'rgba(35, 40, 90, 0.62)');
+      sgFill.addColorStop(1, 'rgba(35, 40, 90, 0.28)');
+      ctx.fillStyle = sgFill;
+      ctx.fill();
+    }
+
+    // Targets (stones)
+    L.targets.forEach((t, i) => {
+      const isLit = lit[i];
+      const cover = dwell[i];
+      // glow ring while filling
+      if (!isLit && cover > 0) {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r + 6 + cover * 4, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(126, 200, 168, ${0.25 + cover * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      // stone body
+      const stoneGrad = ctx.createRadialGradient(t.x - 3, t.y - 3, 1, t.x, t.y, t.r);
+      if (isLit) {
+        stoneGrad.addColorStop(0, '#b8f0d0');
+        stoneGrad.addColorStop(0.5, '#5a9a78');
+        stoneGrad.addColorStop(1, '#2a5040');
+      } else {
+        stoneGrad.addColorStop(0, '#6a6080');
+        stoneGrad.addColorStop(0.6, '#3a3550');
+        stoneGrad.addColorStop(1, '#221e30');
+      }
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fillStyle = stoneGrad;
+      ctx.fill();
+      if (isLit) {
+        ctx.shadowColor = '#7ec8a8';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r * 0.55, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(200, 255, 220, 0.85)';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else {
+        // faint inner rune
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r * 0.35, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(232, 168, 74, 0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+
+    // Gnomons (sticks)
+    gnomons.forEach((g, i) => {
+      const half = gnomonStickLen() * 0.5;
+      const ax = g.x - Math.cos(g.angle) * half;
+      const ay = g.y - Math.sin(g.angle) * half;
+      const bx = g.x + Math.cos(g.angle) * half;
+      const by = g.y + Math.sin(g.angle) * half;
+      const sel = i === selected;
+
+      // base disc
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1520';
+      ctx.fill();
+
+      // stick
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = sel ? '#f0c878' : '#c4a574';
+      ctx.lineWidth = sel ? 5 : 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // knobs
+      ctx.beginPath();
+      ctx.arc(ax, ay, 4, 0, Math.PI * 2);
+      ctx.arc(bx, by, 4, 0, Math.PI * 2);
+      ctx.fillStyle = sel ? '#e8a84a' : '#8a7050';
+      ctx.fill();
+
+      if (sel) {
+        // rotate handle
+        const hx = g.x + Math.cos(g.angle) * (half + 18);
+        const hy = g.y + Math.sin(g.angle) * (half + 18);
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(hx, hy);
+        ctx.strokeStyle = 'rgba(232,168,74,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(hx, hy, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#e8a84a';
+        ctx.fill();
+        ctx.strokeStyle = '#1a1520';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+
+    ctx.restore();
+
+    // Sun marker on rim
+    const sunX = CX + Math.cos(az) * (R - 8);
+    const sunY = CY + Math.sin(az) * (R - 8);
+    const sunR = 10 + elev * 8;
+    const sunGlow = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, sunR * 2.5);
+    sunGlow.addColorStop(0, 'rgba(255, 220, 140, 0.95)');
+    sunGlow.addColorStop(0.4, 'rgba(232, 168, 74, 0.55)');
+    sunGlow.addColorStop(1, 'rgba(232, 168, 74, 0)');
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, sunR * 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = sunGlow;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, sunR * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffe8a8';
+    ctx.fill();
+
+    // Vignette + grain
+    const vig = ctx.createRadialGradient(CX, CY, R * 0.45, CX, CY, R);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(10,8,14,0.45)');
+    ctx.beginPath();
+    ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.fillStyle = vig;
+    ctx.fill();
+
+    if (grainCanvas) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(CX, CY, R, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(grainCanvas, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function updateCoverage(dt) {
+    if (won) return;
+    const L = LEVELS[levelIdx];
+    const az = sunAzimuth(sunT);
+    const elev = sunElevation(sunT);
+    const shadows = gnomons.map(g => shadowGeom(g, az, elev));
+
+    let allLit = true;
+    L.targets.forEach((t, i) => {
+      if (lit[i]) return;
+      let covered = false;
+      for (const sg of shadows) {
+        if (pointInPoly(t.x, t.y, sg.poly)) { covered = true; break; }
+      }
+      if (covered) {
+        dwell[i] = Math.min(1, dwell[i] + dt / 0.45);
+        if (dwell[i] >= 1) {
+          lit[i] = true;
+          chime(440 + i * 60);
+        }
+      } else {
+        dwell[i] = Math.max(0, dwell[i] - dt / 0.35);
+      }
+      if (!lit[i]) allLit = false;
+    });
+
+    // already-lit stay lit
+    if (lit.every(Boolean) && L.targets.length) {
+      allLit = true;
+    } else {
+      allLit = lit.every(Boolean);
+    }
+
+    if (allLit && L.targets.length && !won) {
+      won = true;
+      playing = false;
+      playBtn.textContent = 'Play';
+      winTitle.textContent = levelIdx === LEVELS.length - 1 ? 'All courtyards quiet' : 'Courtyard quiet';
+      $('winSub').textContent = levelIdx === LEVELS.length - 1
+        ? 'You found shade for every stone.'
+        : `"${L.name}" rests in shade.`;
+      nextBtn.textContent = levelIdx === LEVELS.length - 1 ? 'Replay from dawn' : 'Next level';
+      winEl.classList.add('show');
+      chime(660);
+      setTimeout(() => chime(880), 120);
+    }
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (playing && !won) {
+      sunT += dt * 0.04; // full orbit ~25s
+      if (sunT > 1) sunT = 0;
+      sunScrub.value = String(sunT);
+    }
+    updateCoverage(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // Events
+  function onDown(e) {
+    if (won) return;
+    e.preventDefault();
+    ensureAudio();
+    const p = worldFromEvent(e);
+    if (!inCourtyard(p.x, p.y) && hitGnomon(p.x, p.y) < 0) return;
+
+    const hit = hitGnomon(p.x, p.y);
+    if (hit >= 0x1000) {
+      selected = hit & 0xfff;
+      drag = { mode: 'rotate', oa: gnomons[selected].angle, ox: p.x, oy: p.y };
+      return;
+    }
+    if (hit >= 0) {
+      selected = hit;
+      const g = gnomons[selected];
+      // near tip handle → rotate, else move
+      const half = gnomonStickLen() * 0.5;
+      const hx = g.x + Math.cos(g.angle) * (half + 18);
+      const hy = g.y + Math.sin(g.angle) * (half + 18);
+      if (Math.hypot(p.x - hx, p.y - hy) < 18) {
+        drag = { mode: 'rotate', oa: g.angle, ox: p.x, oy: p.y };
+      } else {
+        drag = { mode: 'move', ox: p.x - g.x, oy: p.y - g.y };
+      }
+      return;
+    }
+
+    // place new
+    const left = LEVELS[levelIdx].sticks - gnomons.length;
+    if (left > 0 && inCourtyard(p.x, p.y)) {
+      const az = sunAzimuth(sunT);
+      // default angle perpendicular to sun for interesting shadows
+      gnomons.push({ x: p.x, y: p.y, angle: az + Math.PI / 2 });
+      selected = gnomons.length - 1;
+      drag = { mode: 'move', ox: 0, oy: 0 };
+      updateSticks();
+    } else {
+      selected = -1;
+    }
+  }
+
+  function onMove(e) {
+    if (!drag || selected < 0) return;
+    e.preventDefault();
+    const p = worldFromEvent(e);
+    const g = gnomons[selected];
+    if (drag.mode === 'move') {
+      let nx = p.x - drag.ox;
+      let ny = p.y - drag.oy;
+      const d = Math.hypot(nx, ny);
+      const maxR = R - 28;
+      if (d > maxR) { nx *= maxR / d; ny *= maxR / d; }
+      g.x = nx; g.y = ny;
+    } else {
+      g.angle = Math.atan2(p.y - g.y, p.x - g.x);
+    }
+  }
+
+  function onUp() { drag = null; }
+
+  canvas.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onUp);
+
+  canvas.addEventListener('wheel', (e) => {
+    if (selected < 0 || won) return;
+    e.preventDefault();
+    gnomons[selected].angle += e.deltaY * 0.003;
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (selected >= 0 && !won) {
+        e.preventDefault();
+        gnomons.splice(selected, 1);
+        selected = -1;
+        updateSticks();
+      }
+    }
+    if (e.key === ' ' && !won) {
+      e.preventDefault();
+      playing = !playing;
+      playBtn.textContent = playing ? 'Pause' : 'Play';
+    }
+  });
+
+  sunScrub.addEventListener('input', () => {
+    sunT = parseFloat(sunScrub.value);
+    playing = false;
+    playBtn.textContent = 'Play';
+  });
+  playBtn.addEventListener('click', () => {
+    if (won) return;
+    playing = !playing;
+    playBtn.textContent = playing ? 'Pause' : 'Play';
+    ensureAudio();
+  });
+  resetBtn.addEventListener('click', () => loadLevel(levelIdx));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+  });
+  nextBtn.addEventListener('click', () => {
+    if (levelIdx >= LEVELS.length - 1) loadLevel(0);
+    else loadLevel(levelIdx + 1);
+  });
+
+  makeGrain();
+  loadLevel(0);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
