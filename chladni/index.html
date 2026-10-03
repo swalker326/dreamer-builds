@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chladni — Dreamer Day 6</title>
+<style>
+  :root {
+    --bg: #07080f;
+    --plate: #0c0e18;
+    --ink: #e6e2d6;
+    --muted: #8a8798;
+    --accent: #c9b896;
+    --line: #1e2236;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  #wrap {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 16px 16px;
+    gap: 10px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-weight: 400;
+    letter-spacing: 0.28em;
+    font-size: 0.95rem;
+    color: var(--accent);
+  }
+  header .tag {
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  #stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse at 50% 40%, #12152a 0%, var(--plate) 70%);
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 4px;
+  }
+  #hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    opacity: 0.85;
+    transition: opacity 0.6s;
+  }
+  #hint.fade { opacity: 0; }
+  footer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+  }
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  label strong {
+    color: var(--ink);
+    font-weight: 500;
+    min-width: 1.6em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 110px;
+    height: 4px;
+    background: var(--line);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+  }
+  .step {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  button, .btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  button:hover, .btn:hover { border-color: #5a5e82; }
+  button:active { background: #1a1e32; }
+  button.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #1a1810;
+  }
+  button.icon {
+    width: 32px; height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .presets { gap: 6px; }
+  .presets button { padding: 5px 11px; }
+  .sep {
+    width: 1px; height: 18px;
+    background: var(--line);
+    margin: 0 2px;
+  }
+  @media (max-width: 560px) {
+    #wrap { padding: 10px 10px 12px; }
+    input[type="range"] { width: 88px; }
+    header h1 { letter-spacing: 0.18em; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>CHLADNI</h1>
+    <span class="tag">vibrating plate · nodal sand</span>
+  </header>
+  <div id="stage">
+    <canvas id="c" width="720" height="520"></canvas>
+    <div id="hint">tap plate to sprinkle · bow to excite</div>
+  </div>
+  <footer>
+    <div class="row">
+      <label class="step">n
+        <button class="icon" id="nDec" aria-label="decrease n">−</button>
+        <strong id="nVal">3</strong>
+        <button class="icon" id="nInc" aria-label="increase n">+</button>
+      </label>
+      <label class="step">m
+        <button class="icon" id="mDec" aria-label="decrease m">−</button>
+        <strong id="mVal">2</strong>
+        <button class="icon" id="mInc" aria-label="increase m">+</button>
+      </label>
+      <label>aspect
+        <input type="range" id="aspect" min="60" max="140" value="100">
+        <strong id="aspectVal">1.00</strong>
+      </label>
+      <label>grains
+        <input type="range" id="count" min="400" max="2800" step="100" value="1400">
+        <strong id="countVal">1400</strong>
+      </label>
+      <span class="sep"></span>
+      <button id="bow">Bow</button>
+      <button id="mute">Mute</button>
+    </div>
+    <div class="row presets" id="presets"></div>
+  </footer>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const stage = document.getElementById('stage');
+  const hint = document.getElementById('hint');
+
+  const state = {
+    n: 3,
+    m: 2,
+    aspect: 1.0,      // width / height of plate
+    count: 1400,
+    muted: false,
+    plateW: 1,
+    plateH: 1,
+    margin: 28,
+    particles: [],
+    vibrate: 0,       // excitation envelope 0..1
+    time: 0,
+    audioReady: false,
+  };
+
+  const PRESETS = [
+    { name: 'Cross',   n: 1, m: 1 },
+    { name: 'Diamond', n: 2, m: 1 },
+    { name: 'Lattice', n: 3, m: 2 },
+    { name: 'Star',    n: 4, m: 3 },
+    { name: 'Mesh',    n: 5, m: 4 },
+    { name: 'Ring',    n: 2, m: 2 },
+  ];
+
+  // --- particles ---
+  function makeParticles(n) {
+    const arr = new Array(n);
+    for (let i = 0; i < n; i++) {
+      arr[i] = {
+        x: Math.random(),
+        y: Math.random(),
+        vx: 0,
+        vy: 0,
+      };
+    }
+    return arr;
+  }
+
+  function scatter(amount = 1) {
+    const p = state.particles;
+    for (let i = 0; i < p.length; i++) {
+      if (amount >= 1 || Math.random() < amount) {
+        p[i].x = Math.random();
+        p[i].y = Math.random();
+        p[i].vx = (Math.random() - 0.5) * 0.004;
+        p[i].vy = (Math.random() - 0.5) * 0.004;
+      }
+    }
+    state.vibrate = 1;
+    nudgeAudio();
+  }
+
+  function resizeParticles(count) {
+    const cur = state.particles.length;
+    if (count === cur) return;
+    if (count > cur) {
+      const extra = makeParticles(count - cur);
+      state.particles.push(...extra);
+    } else {
+      state.particles.length = count;
+    }
+    state.count = count;
+  }
+
+  // Standing wave amplitude on unit square [0,1]x[0,1]
+  // u(x,y) = sin(n π x) sin(m π y)
+  function amplitude(x, y) {
+    return Math.sin(state.n * Math.PI * x) * Math.sin(state.m * Math.PI * y);
+  }
+
+  // Approximate |∇|u|| via finite differences for force toward nodes
+  function forceAt(x, y, eps) {
+    const a = Math.abs(amplitude(x, y));
+    const ax = Math.abs(amplitude(Math.min(1, Math.max(0, x + eps)), y));
+    const ay = Math.abs(amplitude(x, Math.min(1, Math.max(0, y + eps))));
+    // Move downhill in |u| (toward nodes)
+    return { fx: (a - ax) / eps, fy: (a - ay) / eps };
+  }
+
+  function stepPhysics(dt) {
+    const p = state.particles;
+    const damp = Math.pow(0.92, dt * 60);
+    const drive = 0.00055 * (0.25 + state.vibrate * 1.4);
+    const jitter = 0.00008 * state.vibrate;
+    const eps = 0.01;
+    const bounce = 0.35;
+
+    for (let i = 0; i < p.length; i++) {
+      const pt = p[i];
+      const f = forceAt(pt.x, pt.y, eps);
+      // Scale force by local |u| so antinodes kick harder
+      const kick = Math.abs(amplitude(pt.x, pt.y));
+      const scale = drive * (0.35 + kick * kick * 2.2);
+      pt.vx += f.fx * scale * dt * 60;
+      pt.vy += f.fy * scale * dt * 60;
+      pt.vx += (Math.random() - 0.5) * jitter;
+      pt.vy += (Math.random() - 0.5) * jitter;
+      pt.vx *= damp;
+      pt.vy *= damp;
+      pt.x += pt.vx * dt * 60;
+      pt.y += pt.vy * dt * 60;
+
+      // Soft walls (plate edges are approximately nodal for free plates;
+      // we keep grains on the plate)
+      if (pt.x < 0) { pt.x = 0; pt.vx = Math.abs(pt.vx) * bounce; }
+      if (pt.x > 1) { pt.x = 1; pt.vx = -Math.abs(pt.vx) * bounce; }
+      if (pt.y < 0) { pt.y = 0; pt.vy = Math.abs(pt.vy) * bounce; }
+      if (pt.y > 1) { pt.y = 1; pt.vy = -Math.abs(pt.vy) * bounce; }
+    }
+
+    state.vibrate = Math.max(0, state.vibrate - dt * 0.18);
+    // Keep a quiet residual vibration so patterns hold
+    if (state.vibrate < 0.18) state.vibrate = 0.18;
+  }
+
+  // --- layout / drawing ---
+  function layoutPlate() {
+    const rect = stage.getBoundingClientRect();
+    const availW = Math.max(200, rect.width - 24);
+    const availH = Math.max(180, rect.height - 24);
+    let pw, ph;
+    if (availW / availH > state.aspect) {
+      ph = availH;
+      pw = ph * state.aspect;
+    } else {
+      pw = availW;
+      ph = pw / state.aspect;
+    }
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.style.width = pw + 'px';
+    canvas.style.height = ph + 'px';
+    canvas.width = Math.round(pw * dpr);
+    canvas.height = Math.round(ph * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    state.plateW = pw;
+    state.plateH = ph;
+  }
+
+  function draw() {
+    const w = state.plateW;
+    const h = state.plateH;
+    const m = state.margin * Math.min(w, h) / 520;
+
+    // Plate background
+    ctx.fillStyle = '#0a0c16';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle modal shading (antinodes faintly lit)
+    const cols = 48, rows = Math.max(24, Math.round(48 / state.aspect));
+    const iw = w - 2 * m;
+    const ih = h - 2 * m;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const x = (i + 0.5) / cols;
+        const y = (j + 0.5) / rows;
+        const a = Math.abs(amplitude(x, y));
+        const g = Math.floor(8 + a * a * 28 * (0.4 + state.vibrate));
+        ctx.fillStyle = `rgb(${g},${g + 2},${g + 10})`;
+        ctx.fillRect(
+          m + (i / cols) * iw,
+          m + (j / rows) * ih,
+          iw / cols + 0.5,
+          ih / rows + 0.5
+        );
+      }
+    }
+
+    // Soft rim
+    ctx.strokeStyle = '#2a2f48';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(m - 1, m - 1, iw + 2, ih + 2);
+
+    // Mode label
+    ctx.fillStyle = 'rgba(138,135,152,0.55)';
+    ctx.font = '11px "IBM Plex Sans", system-ui, sans-serif';
+    ctx.fillText(`n=${state.n}  m=${state.m}`, m, h - 8);
+
+    // Grains
+    const p = state.particles;
+    const r = Math.max(0.9, Math.min(w, h) / 480);
+    for (let i = 0; i < p.length; i++) {
+      const px = m + p[i].x * iw;
+      const py = m + p[i].y * ih;
+      const speed = Math.hypot(p[i].vx, p[i].vy);
+      const bright = 180 + Math.min(75, speed * 12000);
+      // Soft glow
+      ctx.fillStyle = `rgba(${bright},${bright - 8},${bright - 40},0.55)`;
+      ctx.beginPath();
+      ctx.arc(px, py, r * 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgb(${bright + 20},${bright + 10},${bright - 20})`;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // --- audio ---
+  let audioCtx = null, osc = null, gain = null, filter = null;
+
+  function freqHz() {
+    // Map mode indices to a pleasant mid range
+    const base = 110;
+    return base * Math.sqrt(state.n * state.n + state.m * state.m) / Math.SQRT2;
+  }
+
+  function ensureAudio() {
+    if (state.audioReady) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      osc = audioCtx.createOscillator();
+      filter = audioCtx.createBiquadFilter();
+      gain = audioCtx.createGain();
+      osc.type = 'sine';
+      filter.type = 'lowpass';
+      filter.frequency.value = 900;
+      filter.Q.value = 0.7;
+      gain.gain.value = 0;
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freqHz();
+      osc.start();
+      state.audioReady = true;
+      updateAudio();
+    } catch (e) {
+      console.warn('audio unavailable', e);
+    }
+  }
+
+  function updateAudio() {
+    if (!state.audioReady) return;
+    const f = freqHz();
+    const now = audioCtx.currentTime;
+    osc.frequency.setTargetAtTime(f, now, 0.08);
+    filter.frequency.setTargetAtTime(Math.min(1600, f * 3.5), now, 0.1);
+    const target = state.muted ? 0 : 0.028 * (0.5 + state.vibrate * 0.7);
+    gain.gain.setTargetAtTime(target, now, 0.12);
+  }
+
+  function nudgeAudio() {
+    if (!state.audioReady || state.muted) return;
+    const now = audioCtx.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0.045, now, 0.02);
+    gain.gain.setTargetAtTime(0.028, now + 0.25, 0.2);
+  }
+
+  // --- UI ---
+  function syncUI() {
+    document.getElementById('nVal').textContent = state.n;
+    document.getElementById('mVal').textContent = state.m;
+    document.getElementById('aspectVal').textContent = state.aspect.toFixed(2);
+    document.getElementById('countVal').textContent = state.count;
+    document.getElementById('mute').textContent = state.muted ? 'Unmute' : 'Mute';
+    document.getElementById('mute').classList.toggle('active', state.muted);
+    document.querySelectorAll('#presets button').forEach(btn => {
+      const n = +btn.dataset.n, m = +btn.dataset.m;
+      btn.classList.toggle('active', n === state.n && m === state.m);
+    });
+    updateAudio();
+  }
+
+  function setMode(n, m, doScatter = true) {
+    state.n = Math.max(1, Math.min(12, n | 0));
+    state.m = Math.max(1, Math.min(12, m | 0));
+    if (doScatter) scatter(0.85);
+    syncUI();
+  }
+
+  // Presets
+  const presetRow = document.getElementById('presets');
+  PRESETS.forEach(pr => {
+    const b = document.createElement('button');
+    b.textContent = pr.name;
+    b.dataset.n = pr.n;
+    b.dataset.m = pr.m;
+    b.addEventListener('click', () => {
+      ensureAudio();
+      setMode(pr.n, pr.m, true);
+      hint.classList.add('fade');
+    });
+    presetRow.appendChild(b);
+  });
+
+  document.getElementById('nInc').onclick = () => { ensureAudio(); setMode(state.n + 1, state.m); };
+  document.getElementById('nDec').onclick = () => { ensureAudio(); setMode(state.n - 1, state.m); };
+  document.getElementById('mInc').onclick = () => { ensureAudio(); setMode(state.n, state.m + 1); };
+  document.getElementById('mDec').onclick = () => { ensureAudio(); setMode(state.n, state.m - 1); };
+
+  document.getElementById('aspect').oninput = (e) => {
+    state.aspect = (+e.target.value) / 100;
+    layoutPlate();
+    syncUI();
+  };
+  document.getElementById('count').oninput = (e) => {
+    resizeParticles(+e.target.value);
+    syncUI();
+  };
+
+  document.getElementById('bow').onclick = () => {
+    ensureAudio();
+    scatter(1);
+    hint.classList.add('fade');
+  };
+  document.getElementById('mute').onclick = () => {
+    ensureAudio();
+    state.muted = !state.muted;
+    syncUI();
+  };
+
+  function exciteAtEvent(ev) {
+    ensureAudio();
+    const rect = canvas.getBoundingClientRect();
+    const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    const m = state.margin * Math.min(state.plateW, state.plateH) / 520;
+    const iw = state.plateW - 2 * m;
+    const ih = state.plateH - 2 * m;
+    const lx = (clientX - rect.left) * (state.plateW / rect.width);
+    const ly = (clientY - rect.top) * (state.plateH / rect.height);
+    const nx = (lx - m) / iw;
+    const ny = (ly - m) / ih;
+    // Local re-scatter near click + global gentle bow
+    const p = state.particles;
+    for (let i = 0; i < p.length; i++) {
+      const dx = p[i].x - nx;
+      const dy = p[i].y - ny;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 0.04 || Math.random() < 0.12) {
+        p[i].x = Math.min(1, Math.max(0, nx + (Math.random() - 0.5) * 0.18));
+        p[i].y = Math.min(1, Math.max(0, ny + (Math.random() - 0.5) * 0.18));
+        p[i].vx = (Math.random() - 0.5) * 0.006;
+        p[i].vy = (Math.random() - 0.5) * 0.006;
+      }
+    }
+    state.vibrate = 1;
+    nudgeAudio();
+    hint.classList.add('fade');
+  }
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target === canvas || e.target === stage || e.target === hint) {
+      exciteAtEvent(e);
+    }
+  });
+
+  window.addEventListener('resize', () => layoutPlate());
+
+  // --- loop ---
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    state.time += dt;
+    stepPhysics(dt);
+    if (state.audioReady && !state.muted) {
+      // gently breathe gain with residual vibrate
+      const nowA = audioCtx.currentTime;
+      const target = 0.022 + state.vibrate * 0.018;
+      gain.gain.setTargetAtTime(target, nowA, 0.2);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // init
+  state.particles = makeParticles(state.count);
+  layoutPlate();
+  syncUI();
+  // Start with a gentle bow so a figure forms without interaction
+  state.vibrate = 1;
+  requestAnimationFrame(frame);
+
+  // Expose for testing / screenshots
+  window.__chladni = {
+    setMode, scatter, state,
+    settle(ms = 2500) {
+      return new Promise(res => {
+        state.vibrate = 1;
+        const t0 = performance.now();
+        const tick = () => {
+          // accelerate settling for tests
+          for (let k = 0; k < 4; k++) stepPhysics(1 / 60);
+          if (performance.now() - t0 < ms) requestAnimationFrame(tick);
+          else res();
+        };
+        requestAnimationFrame(tick);
+      });
+    }
+  };
+})();
+</script>
+</body>
+</html>
