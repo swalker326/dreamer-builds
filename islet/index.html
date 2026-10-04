@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Islet — Dreamer Day 7</title>
+<style>
+  :root {
+    --paper: #e8dcc4;
+    --ink: #3a2f1f;
+    --ink-soft: #5c4a32;
+    --sea: #a8c4c8;
+    --frame: #8b7355;
+    --accent: #6b5344;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100%;
+    background: #c4b49a;
+    color: var(--ink);
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 12px 40px;
+  }
+  header {
+    width: min(920px, 100%);
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  header h1 {
+    margin: 0;
+    font-weight: 400;
+    letter-spacing: 0.35em;
+    font-size: clamp(1.4rem, 4vw, 1.9rem);
+    color: var(--ink);
+  }
+  header .tag {
+    margin: 4px 0 0;
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+  }
+  .panel {
+    width: min(920px, 100%);
+    background: var(--paper);
+    border: 2px solid var(--frame);
+    border-radius: 4px;
+    box-shadow: 0 8px 28px rgba(58, 47, 31, 0.25), inset 0 0 60px rgba(139, 115, 85, 0.12);
+    padding: 14px 14px 10px;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .controls label {
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  #seed {
+    flex: 1 1 160px;
+    min-width: 140px;
+    max-width: 280px;
+    padding: 8px 12px;
+    border: 1.5px solid var(--frame);
+    background: #f5ead4;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1rem;
+    border-radius: 2px;
+  }
+  #seed:focus { outline: 2px solid #a08060; outline-offset: 1px; }
+  button {
+    padding: 8px 14px;
+    border: 1.5px solid var(--frame);
+    background: #d4c4a4;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  button:hover { background: #cbb892; }
+  button:active { background: #bba87e; }
+  .map-wrap {
+    position: relative;
+    width: 100%;
+    background: #c8d8d6;
+    border: 1.5px solid var(--frame);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    cursor: default;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 0 4px 4px;
+  }
+  #island-title {
+    margin: 0;
+    font-weight: 400;
+    font-size: clamp(1.1rem, 3vw, 1.45rem);
+    letter-spacing: 0.12em;
+  }
+  .legend {
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    line-height: 1.45;
+    max-width: 420px;
+  }
+  .legend span { white-space: nowrap; margin-right: 10px; }
+  .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 1px;
+    border: 1px solid rgba(58,47,31,0.35);
+    vertical-align: middle;
+    margin-right: 3px;
+  }
+  footer.note {
+    width: min(920px, 100%);
+    margin-top: 14px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #6a5a48;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>ISLET</h1>
+    <p class="tag">An invented atlas page from a single seed word</p>
+  </header>
+
+  <div class="panel">
+    <div class="controls">
+      <label for="seed">Seed</label>
+      <input id="seed" type="text" value="zephyr" maxlength="48" autocomplete="off" spellcheck="false">
+      <button type="button" id="regen">Regenerate</button>
+      <button type="button" id="random">Random</button>
+    </div>
+    <div class="map-wrap">
+      <canvas id="map" width="1200" height="900" aria-label="Invented island atlas map"></canvas>
+    </div>
+    <div class="meta">
+      <h2 id="island-title">The Isle of Zephyr</h2>
+      <div class="legend" id="legend">
+        <span><i class="swatch" style="background:#c8b896"></i>dunes</span>
+        <span><i class="swatch" style="background:#7a9a6a"></i>forest</span>
+        <span><i class="swatch" style="background:#8a9a78"></i>highland</span>
+        <span><i class="swatch" style="background:#8a9a88"></i>marsh</span>
+        <span><i class="swatch" style="background:#6a8aaa"></i>river</span>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note">Dreamer Day 7 · Oct 4, 2026 · Same seed always redraws the same island · Offline</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ——— Seeded PRNG (mulberry32) ———
+  function hashSeed(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ——— Value noise + fBM ———
+  function makeNoise(rand) {
+    const table = new Float32Array(256);
+    const perm = new Uint8Array(512);
+    for (let i = 0; i < 256; i++) {
+      table[i] = rand();
+      perm[i] = i;
+    }
+    for (let i = 255; i > 0; i--) {
+      const j = (rand() * (i + 1)) | 0;
+      const tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+    }
+    for (let i = 0; i < 256; i++) perm[i + 256] = perm[i];
+
+    function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function grad(ix, iy) {
+      return table[perm[(perm[ix & 255] + iy) & 255]];
+    }
+    function noise2(x, y) {
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const fx = fade(x - x0), fy = fade(y - y0);
+      const a = grad(x0, y0), b = grad(x0 + 1, y0);
+      const c = grad(x0, y0 + 1), d = grad(x0 + 1, y0 + 1);
+      return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+    }
+    function fbm(x, y, oct, lac, gain) {
+      let amp = 0.5, freq = 1, sum = 0, norm = 0;
+      for (let i = 0; i < oct; i++) {
+        sum += amp * noise2(x * freq, y * freq);
+        norm += amp;
+        amp *= gain;
+        freq *= lac;
+      }
+      return sum / norm;
+    }
+    return { noise2, fbm };
+  }
+
+  // ——— Place-name generator ———
+  const STEMS = [
+    "Ael","Brin","Caled","Dor","Eri","Fen","Galen","Hal","Ith","Jarl",
+    "Kel","Lor","Mor","Nai","Orn","Pel","Raven","Sel","Tor","Ulf",
+    "Vel","Wyn","Yarrow","Zan","Ash","Briar","Cairn","Dell","Ember","Frost",
+    "Glen","Harrow","Ivy","Jade","Kestrel","Lark","Moss","North","Oak","Pine"
+  ];
+  const LINKS = ["","a","e","i","o","en","an","or","eth","ith","ara"];
+  const ENDS = ["mere","haven","ford","moor","wick","stead","holm","reach","spire","vale","crest","point","bay","sound","cliff","grove","marsh","falls","ridge","isle","tor","ness","port","keep","wood","field","shade"];
+  const TITLE_WORDS = ["Isle","Island","Archipelago","Atoll","Key","Reef","Cay"];
+
+  function makeName(rand) {
+    const stem = STEMS[(rand() * STEMS.length) | 0];
+    const link = rand() > 0.45 ? LINKS[(rand() * LINKS.length) | 0] : "";
+    const end = ENDS[(rand() * ENDS.length) | 0];
+    let name = stem + link + end;
+    name = name.replace(/([aeiou])\1{2,}/gi, "$1$1");
+    // Avoid ugly joins like "pointpoint" style doubles at boundary
+    name = name.replace(/(.)\1{2,}/gi, "$1$1");
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  function islandTitle(seed, rand) {
+    const kind = TITLE_WORDS[(rand() * TITLE_WORDS.length) | 0];
+    const clean = seed.trim().replace(/\s+/g, " ");
+    if (clean.length >= 2 && clean.length <= 18 && /^[a-zA-Z][a-zA-Z\s'-]*$/.test(clean)) {
+      const pretty = clean.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      return "The " + kind + " of " + pretty;
+    }
+    return "The " + kind + " of " + makeName(rand);
+  }
+
+  // ——— Map generation ———
+  const W = 1200, H = 900;
+  const canvas = document.getElementById("map");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  function generate(seedStr) {
+    const seed = (seedStr || "zephyr").trim() || "zephyr";
+    const rand = mulberry32(hashSeed(seed.toLowerCase()));
+    const noise = makeNoise(rand);
+    const rand2 = mulberry32(hashSeed(seed.toLowerCase() + "::names"));
+
+    const elev = new Float32Array(W * H);
+    const land = new Uint8Array(W * H);
+
+    // Island mask: radial falloff + coastal noise
+    const cx = W * (0.42 + rand() * 0.16);
+    const cy = H * (0.44 + rand() * 0.14);
+    const rx = W * (0.28 + rand() * 0.08);
+    const ry = H * (0.26 + rand() * 0.08);
+    const coastAmp = 0.22 + rand() * 0.12;
+    const rot = (rand() - 0.5) * 0.6;
+    const cosR = Math.cos(rot), sinR = Math.sin(rot);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const dx = (x - cx) / rx;
+        const dy = (y - cy) / ry;
+        const xr = dx * cosR - dy * sinR;
+        const yr = dx * sinR + dy * cosR;
+        const r = Math.sqrt(xr * xr + yr * yr);
+        const ang = Math.atan2(yr, xr);
+        const coast =
+          noise.fbm(Math.cos(ang) * 2.8 + 3.1, Math.sin(ang) * 2.8 + 1.7, 6, 2.15, 0.55) * coastAmp +
+          noise.fbm(x * 0.0055, y * 0.0055, 4, 2.0, 0.5) * 0.14 +
+          noise.fbm(x * 0.018, y * 0.018, 2, 2.0, 0.5) * 0.05;
+        const threshold = 0.88 + coast;
+        const inside = r < threshold;
+        const i = y * W + x;
+        land[i] = inside ? 1 : 0;
+
+        if (inside) {
+          // Elevation: high toward center, ridged noise
+          const tip = Math.max(0, 1 - r / threshold);
+          const n1 = noise.fbm(x * 0.0035 + 10, y * 0.0035 + 20, 5, 2.05, 0.5);
+          const n2 = noise.fbm(x * 0.008 + 40, y * 0.008 + 5, 3, 2.2, 0.45);
+          let e = tip * 0.72 + n1 * 0.38 + n2 * 0.18;
+          // Soft peaks
+          e = Math.pow(Math.max(0, Math.min(1, e)), 0.92);
+          elev[i] = e;
+        } else {
+          elev[i] = 0;
+        }
+      }
+    }
+
+    // Smooth elevation lightly near coast
+    // (skip heavy blur for perf — elev already soft)
+
+    // Rivers: pick high points, flow downhill
+    const rivers = [];
+    const numRivers = 1 + ((rand() * 2.4) | 0); // 1–3
+    const usedStarts = [];
+    for (let r = 0; r < numRivers; r++) {
+      let bestX = 0, bestY = 0, bestE = 0;
+      for (let tries = 0; tries < 80; tries++) {
+        const sx = ((0.25 + rand() * 0.5) * W) | 0;
+        const sy = ((0.25 + rand() * 0.5) * H) | 0;
+        const si = sy * W + sx;
+        if (!land[si]) continue;
+        let tooClose = false;
+        for (const u of usedStarts) {
+          const ddx = u.x - sx, ddy = u.y - sy;
+          if (ddx * ddx + ddy * ddy < 90 * 90) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        if (elev[si] > bestE && elev[si] > 0.45) {
+          bestE = elev[si]; bestX = sx; bestY = sy;
+        }
+      }
+      if (bestE < 0.4) continue;
+      usedStarts.push({ x: bestX, y: bestY });
+
+      const path = [{ x: bestX, y: bestY }];
+      let px = bestX, py = bestY;
+      const visited = new Set([py * W + px]);
+      for (let step = 0; step < 900; step++) {
+        let nx = px, ny = py, ne = elev[py * W + px];
+        // Prefer steepest descent among 8 neighbors + slight noise bias seaward
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            const qx = px + ox, qy = py + oy;
+            if (qx < 1 || qy < 1 || qx >= W - 1 || qy >= H - 1) continue;
+            const qi = qy * W + qx;
+            if (visited.has(qi)) continue;
+            let score = elev[qi];
+            // Bias slightly outward from island center for variety
+            const away = ((qx - cx) * ox + (qy - cy) * oy);
+            if (away > 0) score -= 0.01;
+            if (score < ne) { ne = score; nx = qx; ny = qy; }
+          }
+        }
+        if (nx === px && ny === py) {
+          // Stuck — nudge toward sea
+          const ang = Math.atan2(py - cy, px - cx);
+          nx = (px + Math.round(Math.cos(ang))) | 0;
+          ny = (py + Math.round(Math.sin(ang))) | 0;
+          if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1) break;
+        }
+        px = nx; py = ny;
+        path.push({ x: px, y: py });
+        visited.add(py * W + px);
+        if (!land[py * W + px]) break; // reached sea
+      }
+      if (path.length > 40) rivers.push(path);
+    }
+
+    // Place names: sample land points with good spacing
+    const places = [];
+    const nameCount = 4 + ((rand2() * 4) | 0); // 4–7
+    for (let n = 0; n < nameCount * 12 && places.length < nameCount; n++) {
+      const x = ((0.18 + rand2() * 0.64) * W) | 0;
+      const y = ((0.18 + rand2() * 0.64) * H) | 0;
+      const i = y * W + x;
+      if (!land[i] || elev[i] < 0.12) continue;
+      // Not too close to coast (want a little inland) except one coastal
+      let nearCoast = false;
+      for (let d = 1; d <= 6; d++) {
+        if (!land[i - d] || !land[i + d] || !land[i - d * W] || !land[i + d * W]) {
+          nearCoast = true; break;
+        }
+      }
+      const wantCoast = places.length === 0 && rand2() > 0.5;
+      if (nearCoast && !wantCoast && elev[i] < 0.35) continue;
+      let ok = true;
+      for (const p of places) {
+        const dx = p.x - x, dy = p.y - y;
+        if (dx * dx + dy * dy < 130 * 130) { ok = false; break; }
+      }
+      if (!ok) continue;
+      // Keep off rivers
+      let onRiver = false;
+      for (const path of rivers) {
+        for (const pt of path) {
+          if ((pt.x - x) * (pt.x - x) + (pt.y - y) * (pt.y - y) < 14 * 14) {
+            onRiver = true; break;
+          }
+        }
+        if (onRiver) break;
+      }
+      if (onRiver) continue;
+      places.push({ x, y, name: makeName(rand2), elev: elev[i], coastal: nearCoast });
+    }
+
+    const title = islandTitle(seed, rand2);
+    return { elev, land, rivers, places, title, cx, cy, seed };
+  }
+
+  // ——— Rendering ———
+  function biomeColor(e, nearCoast, marshy) {
+    // Returns [r,g,b] on parchment palette
+    if (marshy) return [138, 158, 136]; // marsh green-grey
+    if (nearCoast && e < 0.28) return [200, 184, 150]; // dunes
+    if (e > 0.62) return [138, 154, 120]; // highland
+    if (e > 0.32) return [122, 154, 106]; // forest
+    return [168, 170, 128]; // low scrub / meadow
+  }
+
+  function drawMap(data) {
+    const { elev, land, rivers, places, title, cx, cy } = data;
+    const img = ctx.createImageData(W, H);
+    const px = img.data;
+
+    // Precompute coastal distance-ish for biome
+    // Sea base: soft parchment-blue wash
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const o = i * 4;
+        if (!land[i]) {
+          // Ocean with subtle depth rings + paper grain
+          const dx = (x - cx) / W, dy = (y - cy) / H;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const grain = ((x * 12.9898 + y * 78.233) % 1); // cheap pseudo
+          const g2 = Math.abs(Math.sin(x * 0.07 + y * 0.05)) * 0.5;
+          let depth = Math.min(1, dist * 1.4);
+          const r = 168 - depth * 28 + g2 * 6;
+          const g = 196 - depth * 22 + g2 * 4;
+          const b = 200 - depth * 10 + g2 * 3;
+          px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
+        }
+      }
+    }
+
+    // Land with hillshade + biomes
+    const sunX = -0.55, sunY = -0.4, sunZ = 0.75;
+    const sunLen = Math.sqrt(sunX * sunX + sunY * sunY + sunZ * sunZ);
+
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (!land[i]) continue;
+        const e = elev[i];
+        // Sobel-ish slope
+        const dzdx = (elev[i + 1] - elev[i - 1]) * 0.5;
+        const dzdy = (elev[i + W] - elev[i - W]) * 0.5;
+        const nx = -dzdx * 6, ny = -dzdy * 6, nz = 1;
+        const nlen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        let shade = (nx * sunX + ny * sunY + nz * sunZ) / (nlen * sunLen);
+        shade = 0.55 + 0.45 * Math.max(0, shade);
+
+        // Near coast?
+        let nearCoast = false;
+        for (let d = 1; d <= 5; d++) {
+          if (!land[i - d] || !land[i + d] || !land[i - W * d] || !land[i + W * d]) {
+            nearCoast = true; break;
+          }
+        }
+        // Marsh: low + flat + often near river mouths later — use low+noise
+        const flat = Math.abs(dzdx) + Math.abs(dzdy) < 0.012;
+        const marshy = e < 0.22 && flat && nearCoast && ((x + y) % 7 < 3);
+
+        let [r, g, b] = biomeColor(e, nearCoast, marshy);
+        // Contour feel: subtle banding
+        const band = Math.sin(e * 28) * 0.04;
+        r = Math.max(0, Math.min(255, r * shade * (1 + band)));
+        g = Math.max(0, Math.min(255, g * shade * (1 + band * 0.7)));
+        b = Math.max(0, Math.min(255, b * shade * (1 + band * 0.5)));
+
+        // Paper grain
+        const grain = ((Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1);
+        const gn = (grain - 0.5) * 8;
+        r += gn; g += gn; b += gn;
+
+        const o = i * 4;
+        px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
+      }
+    }
+
+    // Coastline ink stroke
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (!land[i]) continue;
+        if (!land[i - 1] || !land[i + 1] || !land[i - W] || !land[i + W] ||
+            !land[i - W - 1] || !land[i - W + 1] || !land[i + W - 1] || !land[i + W + 1]) {
+          const o = i * 4;
+          px[o] = 58; px[o + 1] = 47; px[o + 2] = 31; px[o + 3] = 255;
+        }
+      }
+    }
+
+    ctx.putImageData(img, 0, 0);
+
+    // Soft parchment vignette + paper texture overlay
+    ctx.save();
+    const vg = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.72);
+    vg.addColorStop(0, "rgba(232,220,196,0)");
+    vg.addColorStop(1, "rgba(90,70,40,0.18)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    // Rivers
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const path of rivers) {
+      if (path.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+      // Wide soft underlay
+      ctx.strokeStyle = "rgba(90, 130, 150, 0.35)";
+      ctx.lineWidth = 5.5;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(70, 110, 140, 0.85)";
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(55, 90, 120, 0.55)";
+      ctx.lineWidth = 1.0;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Place names
+    ctx.save();
+    ctx.fillStyle = "#3a2f1f";
+    ctx.strokeStyle = "rgba(232, 220, 196, 0.7)";
+    ctx.lineWidth = 3;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const p of places) {
+      const size = p.elev > 0.55 ? 17 : p.coastal ? 14 : 15;
+      ctx.font = "italic " + size + "px Palatino, Georgia, serif";
+      ctx.strokeText(p.name, p.x, p.y);
+      ctx.fillText(p.name, p.x, p.y);
+      // Tiny dot
+      ctx.beginPath();
+      ctx.arc(p.x, p.y + size * 0.7, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = "#5c4a32";
+      ctx.fill();
+      ctx.fillStyle = "#3a2f1f";
+    }
+    ctx.restore();
+
+    // Decorative border
+    ctx.save();
+    ctx.strokeStyle = "#6b5344";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(18, 18, W - 36, H - 36);
+    ctx.strokeStyle = "#a08060";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(24, 24, W - 48, H - 48);
+    ctx.restore();
+
+    // Compass rose (bottom-left)
+    drawCompass(ctx, 110, H - 120, 48);
+
+    // Scale bar (bottom-right)
+    drawScale(ctx, W - 200, H - 70);
+
+    // Cartouche title on map
+    ctx.save();
+    ctx.font = "600 22px Palatino, Georgia, serif";
+    ctx.fillStyle = "#3a2f1f";
+    ctx.textAlign = "center";
+    ctx.fillText(title, W / 2, 56);
+    ctx.font = "italic 13px Palatino, Georgia, serif";
+    ctx.fillStyle = "#5c4a32";
+    ctx.fillText("Charted from the seed \u201C" + data.seed + "\u201D", W / 2, 78);
+    ctx.restore();
+
+    document.getElementById("island-title").textContent = title;
+  }
+
+  function drawCompass(c, x, y, r) {
+    c.save();
+    c.translate(x, y);
+    // Circle
+    c.beginPath();
+    c.arc(0, 0, r, 0, Math.PI * 2);
+    c.fillStyle = "rgba(232, 220, 196, 0.75)";
+    c.fill();
+    c.strokeStyle = "#5c4a32";
+    c.lineWidth = 1.5;
+    c.stroke();
+    // Rays
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      const len = i % 2 === 0 ? r * 0.85 : r * 0.55;
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+      c.strokeStyle = i === 0 ? "#3a2f1f" : "#8b7355";
+      c.lineWidth = i === 0 ? 2 : 1;
+      c.stroke();
+    }
+    // N diamond
+    c.beginPath();
+    c.moveTo(0, -r * 0.9);
+    c.lineTo(6, -r * 0.35);
+    c.lineTo(0, -r * 0.2);
+    c.lineTo(-6, -r * 0.35);
+    c.closePath();
+    c.fillStyle = "#3a2f1f";
+    c.fill();
+    c.font = "bold 14px Palatino, Georgia, serif";
+    c.fillStyle = "#3a2f1f";
+    c.textAlign = "center";
+    c.fillText("N", 0, -r - 8);
+    c.restore();
+  }
+
+  function drawScale(c, x, y) {
+    c.save();
+    c.fillStyle = "rgba(232, 220, 196, 0.8)";
+    c.fillRect(x - 10, y - 28, 170, 48);
+    c.strokeStyle = "#5c4a32";
+    c.lineWidth = 1;
+    c.strokeRect(x - 10, y - 28, 170, 48);
+    // Bar: 100 fictional leagues ~ 120px
+    const barW = 120;
+    c.fillStyle = "#3a2f1f";
+    c.fillRect(x, y, barW, 6);
+    c.fillStyle = "#e8dcc4";
+    c.fillRect(x, y, barW / 2, 6);
+    c.strokeStyle = "#3a2f1f";
+    c.strokeRect(x, y, barW, 6);
+    // Ticks
+    for (let i = 0; i <= 4; i++) {
+      const tx = x + (barW * i) / 4;
+      c.beginPath();
+      c.moveTo(tx, y);
+      c.lineTo(tx, y + 10);
+      c.stroke();
+    }
+    c.font = "11px Palatino, Georgia, serif";
+    c.fillStyle = "#3a2f1f";
+    c.textAlign = "center";
+    c.fillText("0", x, y - 6);
+    c.fillText("50", x + barW / 2, y - 6);
+    c.fillText("100 leagues", x + barW, y - 6);
+    c.restore();
+  }
+
+  // ——— UI ———
+  const seedInput = document.getElementById("seed");
+  const WORDS = ["zephyr","aurora","bramble","cinder","driftwood","ember","fjord","gossamer","harbor","ivory","juniper","kelpie","lumen","mirage","nimbus","orchid","pebble","quarry","rift","saffron","thistle","umbra","verdant","willow","xenon","yarrow"];
+
+  function run() {
+    const seed = seedInput.value;
+    const data = generate(seed);
+    drawMap(data);
+  }
+
+  document.getElementById("regen").addEventListener("click", run);
+  document.getElementById("random").addEventListener("click", function () {
+    const w = WORDS[(Math.random() * WORDS.length) | 0];
+    seedInput.value = w;
+    run();
+  });
+  seedInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") run();
+  });
+
+  // Initial paint
+  run();
+})();
+</script>
+</body>
+</html>
