@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Treadle — a weaving draft you can hear</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --linen:#efe6d3; --paper:#fbf6ea; --ink:#3a2a1e; --muted:#7d6a57; --wood:#8a5a34; --wood2:#6b4426;
+  --line:#dccaa6; --gold:#e9b949; --shadow:0 1px 0 #fff8 inset, 0 10px 30px -18px #5a3b2280;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:
+    repeating-linear-gradient(0deg,#0000 0 3px,#8a5a3408 3px 4px),
+    repeating-linear-gradient(90deg,#0000 0 3px,#8a5a3406 3px 4px),
+    var(--linen);
+  color:var(--ink);
+  font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  padding:22px 18px 40px;
+}
+.wrap{max-width:1280px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+h1{margin:0;font-weight:400;letter-spacing:.18em;font-size:30px;text-transform:uppercase}
+h1 span{color:var(--wood)}
+.sub{color:var(--muted);font-style:italic;margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+button,select{
+  font:inherit;font-size:14px;color:var(--ink);background:var(--paper);
+  border:1px solid var(--line);border-radius:999px;padding:6px 13px;cursor:pointer;
+  box-shadow:0 1px 0 #fff inset;transition:background .15s,border-color .15s,transform .05s;
+}
+button:hover,select:hover{border-color:var(--wood)}
+button:active{transform:translateY(1px)}
+button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.accent{background:var(--wood);color:#fff8ec;border-color:var(--wood2)}
+button.accent:hover{background:var(--wood2)}
+button.play{background:#2b3566;color:#f6efdd;border-color:#1b2140;min-width:150px}
+button.play.on{background:#a3402e;border-color:#7d2f21}
+.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+.tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+.tools label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+input[type=range]{accent-color:var(--wood);width:110px}
+.swatches{display:flex;gap:4px;flex-wrap:wrap}
+.sw{width:22px;height:22px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw.sel{box-shadow:0 0 0 2px var(--ink)}
+#draftWrap{position:relative;width:100%}
+canvas{display:block}
+#draft{touch-action:pan-y;cursor:crosshair;border-radius:8px}
+.status{font-size:13px;color:var(--muted);min-height:1.4em;margin-top:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.status b{color:var(--ink);font-weight:600}
+#fabric{width:100%;border-radius:10px;box-shadow:0 12px 30px -16px #3a2a1eaa, 0 0 0 1px #0002}
+.fabricHead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.fabricHead h2{margin:0;font-weight:400;font-size:18px;letter-spacing:.06em}
+.side{display:flex;flex-direction:column;gap:18px}
+details{font-size:15px;line-height:1.5}
+details summary{cursor:pointer;font-size:17px;letter-spacing:.04em;list-style:none}
+details summary::before{content:"▸ ";color:var(--wood)}
+details[open] summary::before{content:"▾ "}
+details p,details li{color:#4d3c2e}
+details ul{padding-left:20px}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:14px}
+.legend i{font-style:normal;color:var(--wood);font-weight:600}
+.mini{font-size:12px;color:var(--muted)}
+@media (max-width:520px){body{padding:14px 8px 30px}.panel{padding:10px}h1{font-size:24px}}
+footer{margin-top:22px;color:var(--muted);font-size:13px;text-align:center;font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Tre<span>a</span>dle</h1>
+  <p class="sub">A handloom weaving draft you can edit, wear, and hear.</p>
+</header>
+
+<div class="presets" id="presets"></div>
+
+<div class="grid">
+  <section class="panel">
+    <div class="tools">
+      <button class="play" id="play">▶ Play the cloth</button>
+      <label>tempo <input type="range" id="tempo" min="50" max="320" value="150"></label>
+      <label>shafts <select id="shafts"><option>4</option><option>6</option><option>8</option></select></label>
+      <button id="tromp" title="Treadle each pick on the shaft of the matching warp end — the classic 'tromp as writ'">Tromp as writ</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="tools">
+      <span class="mini">yarn</span>
+      <div class="swatches" id="swatches"></div>
+      <button id="fillWarp">Fill warp</button>
+      <button id="fillWeft">Fill weft</button>
+      <button id="weftAsWarp" title="Copy the warp color order into the weft">Weft = warp</button>
+    </div>
+    <div id="draftWrap"><canvas id="draft"></canvas></div>
+    <div class="status"><span id="hover">Click or drag in the threading, tie-up, or treadling grids. Color rows paint with the selected yarn.</span><span id="info"></span></div>
+  </section>
+
+  <aside class="side">
+    <section class="panel">
+      <div class="fabricHead">
+        <h2 id="draftName">Cloth</h2>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="scale" title="thread size"><option value="3">fine</option><option value="5" selected>medium</option><option value="8">bold</option></select>
+          <button class="accent" id="export">Export PNG</button>
+        </div>
+      </div>
+      <canvas id="fabric"></canvas>
+    </section>
+    <section class="panel">
+      <details id="explain">
+        <summary>How a draft works</summary>
+        <p>A <b>weaving draft</b> is the sheet music of a loom. Four grids describe the cloth completely:</p>
+        <div class="legend">
+          <i>Threading</i><span>(top) Each column is one warp end; the mark says which <em>shaft</em> its heddle hangs on. Shaft 1 is the bottom row, nearest the weaver.</span>
+          <i>Tie-up</i><span>(corner) Each column is a <em>treadle</em>; marks say which shafts that treadle lifts (rising-shed / jack loom).</span>
+          <i>Treadling</i><span>(right) Each row is one pass of the shuttle — a <em>pick</em> — and shows which treadle is pressed.</span>
+          <i>Drawdown</i><span>(middle) The cloth itself. A cell shows the <em>warp</em> color if that end's shaft is lifted on that pick; otherwise the weft passes over it.</span>
+        </div>
+        <p>In other words: <code>warp up = tieup[ shaft(end) ][ treadle(pick) ]</code>. Everything — plain weave, twills, diamonds, overshot, houndstooth, tartan — comes from that one rule plus the order of colored yarns.</p>
+        <p><b>Try it:</b> drag a diagonal across the threading, press <em>Tromp as writ</em> (treadle in the same order you threaded), and watch a diamond bloom. Shift-click in the treadling to press two treadles at once.</p>
+        <p><b>Playing the cloth.</b> The drawdown is read like a music-box roll. The shuttle sweeps one pick per beat, alternating direction as a real shuttle does. Wherever a warp end <em>rises to the surface</em> it plucks a note on a pentatonic scale — pitch from its shaft and its position across the warp — and the note rings for as long as the warp float lasts. A change of weft color strikes a low string. Plain weave chatters, twills climb in scales, long overshot floats drone.</p>
+        <p class="mini">Presets follow traditional 4-shaft structures (plain weave, 2/2 twill, bird's eye point twill, rosepath 1-2-3-4-1-4-3-2, goose-eye extended point twill, Monk's belt blocks with tabby, houndstooth 4&amp;4) plus an 8-shaft point-twill diamond and a twill tartan. Your draft is saved in the URL, so you can share it.</p>
+      </details>
+    </section>
+  </aside>
+</div>
+<footer>Treadle · Dreamer Day 9 · everything runs in your browser</footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- palette (plant-dye inspired) ----------
+const PAL = ['#efe6d2','#d6c39a','#2a3566','#1b2140','#5d7fae','#a3402e','#d6a43a','#5b3b28','#6f7b3c','#2b2826','#c88c7e','#7b4f7d'];
+const PALNAME = ['linen','flax','indigo','deep indigo','woad','madder','weld','walnut','moss','charcoal','rose','lichen'];
+const RGB = PAL.map(h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16)));
+
+// ---------- state ----------
+let st = null;          // {name,S,T,W,P,thr[],tie[S][T],trd[P][T],wc[],fc[]}
+let dd = [];            // drawdown: dd[p][w] = 1 if warp up
+let brush = 2;
+
+const range = n => Array.from({length:n},(_,i)=>i);
+const stripes = list => list.flatMap(([c,n]) => Array(n).fill(c));
+const mirror = a => a.concat(a.slice(1,-1).reverse());
+
+function build(o){
+  const S=o.S||4, T=S+2, W=o.W||40, P=o.P||40;
+  const s={name:o.name||'Untitled',S,T,W,P};
+  s.thr = range(W).map(i => { const v=o.thr[i%o.thr.length]; return v>0 && v<=S ? v-1 : -1; });
+  s.tie = range(S).map(()=>Array(T).fill(false));
+  o.tie.forEach((sh,t)=>{ if(t<T) sh.forEach(x=>{ if(x>=1&&x<=S) s.tie[x-1][t]=true; }); });
+  s.trd = range(P).map(p => { const r=Array(T).fill(false); const v=o.trd[p%o.trd.length]; (Array.isArray(v)?v:[v]).forEach(t=>{ if(t>=1&&t<=T) r[t-1]=true; }); return r; });
+  s.wc = range(W).map(i=>o.wc[i%o.wc.length]);
+  s.fc = range(P).map(i=>o.fc[i%o.fc.length]);
+  return s;
+}
+const TWILL22 = [[1,2],[2,3],[3,4],[4,1]];
+function twillTie(S, pat){ return range(S).map(t => range(S).filter(k=>pat[k]).map(k => ((k+t)%S)+1)); }
+
+const PRESETS = {
+  'Plain weave': () => build({name:'Plain weave',thr:[1,2,3,4],tie:[[1,3],[2,4]],trd:[1,2],wc:[0],fc:[2]}),
+  '2/2 twill': () => build({name:'2/2 twill',thr:[1,2,3,4],tie:TWILL22,trd:[1,2,3,4],wc:[3],fc:[1]}),
+  "Bird's eye": () => build({name:"Bird's eye (point twill)",W:42,P:42,thr:[1,2,3,4,3,2],tie:TWILL22,trd:[1,2,3,4,3,2],wc:[0],fc:[5]}),
+  'Rosepath': () => build({name:'Rosepath',thr:[1,2,3,4,1,4,3,2],tie:TWILL22,trd:[1,2,3,4,1,4,3,2],wc:[0],fc:[7]}),
+  'Goose-eye': () => { const u=[1,2,3,4,1,2,3,4,3,2,1,4,3,2]; return build({name:'Goose-eye',W:42,P:42,thr:u,tie:TWILL22,trd:u,wc:[1],fc:[2]}); },
+  "Monk's belt": () => {
+    const blocks=[['B',4],['A',8],['B',4],['A',4],['B',8],['A',4],['B',4],['A',8],['B',4]];
+    const thr=blocks.flatMap(([b,n])=>range(n).map(i=> b==='A' ? 1+(i%2) : 3+(i%2)));
+    // t1,t2 = tabby; t3 lifts A (weft floats over B); t4 lifts B (weft floats over A)
+    const units=[['B',2],['A',4],['B',2],['A',2],['B',4],['A',2],['B',2],['A',4],['B',2]];
+    const trd=[], fc=[]; let tb=0;
+    units.forEach(([b,n])=>{ for(let i=0;i<n;i++){ trd.push(b==='A'?4:3); fc.push(5); trd.push(tb?2:1); fc.push(0); tb^=1; } });
+    return build({name:"Monk's belt (overshot blocks)",W:48,P:48,thr,tie:[[1,3],[2,4],[1,2],[3,4]],trd,wc:[0],fc});
+  },
+  'Houndstooth': () => build({name:'Houndstooth',W:48,P:48,thr:[1,2,3,4],tie:TWILL22,trd:[1,2,3,4],wc:stripes([[9,4],[0,4]]),fc:stripes([[9,4],[0,4]])}),
+  '8-shaft diamond': () => { const u=mirror(range(8).map(i=>i+1)); return build({name:'8-shaft point-twill diamond',S:8,W:42,P:42,thr:u,tie:twillTie(8,[1,1,1,0,1,0,0,0]),trd:u,wc:[3],fc:[6]}); },
+  'Tartan': () => { const set=stripes([[3,6],[8,4],[3,2],[5,2],[3,2],[8,4],[3,6],[6,1],[3,1]]); const c=set.concat(set.slice().reverse()).slice(0,48); return build({name:'Twill tartan',W:48,P:48,thr:[1,2,3,4],tie:TWILL22,trd:[1,2,3,4],wc:c,fc:c}); },
+};
+
+// ---------- surprise ----------
+const R = Math.random, pick = a => a[Math.floor(R()*a.length)], ri=(a,b)=>a+Math.floor(R()*(b-a+1));
+function genSeq(S, n){
+  const kind = pick(['point','runs','runs','walk','straight']);
+  let u=[];
+  if(kind==='straight') u=range(S).map(i=>i+1);
+  else if(kind==='point') u=mirror(range(S).map(i=>i+1));
+  else if(kind==='walk'){ let s=0; const half=ri(5,10); for(let i=0;i<half;i++){ u.push(s+1); s=(s+(R()<0.75?1:S-1))%S; } u=mirror(u); }
+  else { // extended point: runs that reverse direction
+    let s=0, dir=1; const segs=ri(2,4);
+    for(let k=0;k<segs;k++){ const len=ri(2,S+2); for(let i=0;i<len;i++){ u.push(s+1); s=(s+dir+S)%S; } dir=-dir; }
+    u=mirror(u);
+  }
+  if(u.length<2) u=[1,2];
+  return range(n).map(i=>u[i%u.length]);
+}
+function surprise(){
+  const S = R()<0.68 ? 4 : 8, W=48, P=48;
+  const thr = genSeq(S,W);
+  const pats4=[[1,1,0,0],[1,1,0,0],[1,0,0,0],[1,1,1,0]];
+  const pats8=[[1,1,1,0,1,0,0,0],[1,1,1,1,0,0,0,0],[1,1,0,1,1,0,0,0],[1,1,1,0,0,1,0,0],[1,0,1,1,1,0,0,0]];
+  const tie = twillTie(S, pick(S===4?pats4:pats8));
+  tie.push(range(S).filter(k=>k%2===0).map(k=>k+1), range(S).filter(k=>k%2===1).map(k=>k+1)); // tabby treadles
+  let trd;
+  const asDrawn = R()<0.5;
+  const base = asDrawn ? thr.slice() : genSeq(S,P);
+  const tabby = R()<0.22;
+  const schemes=[[0,2],[1,5],[3,6],[0,7],[0,3],[1,3],[9,10],[0,8],[4,0],[3,1],[7,6],[0,11]];
+  const [a,b] = pick(schemes);
+  let wc=[a], fc=[b];
+  if(tabby){
+    trd=[]; fc=[];
+    for(let p=0;p<P;p++){ if(p%2===0){ trd.push(base[p>>1]); fc.push(b); } else { trd.push(((p>>1)%2)? S+2 : S+1); fc.push(a); } }
+  } else {
+    trd=base;
+    if(R()<0.4){ // stripes
+      const c = pick(schemes)[1]; const n1=ri(2,6), n2=ri(1,4), n3=ri(1,3);
+      const seq = stripes([[a,n1],[b,n2],[a,n3],[c,n2]]);
+      wc = seq; fc = R()<0.65 ? seq : [b];
+    }
+  }
+  const s = build({name:'Surprise', S, W, P, thr, tie, trd, wc, fc});
+  return s;
+}
+
+// ---------- drawdown ----------
+function compute(){
+  const {S,T,W,P,thr,tie,trd}=st;
+  dd = range(P).map(p => { const row=new Uint8Array(W); for(let w=0;w<W;w++){ const s=thr[w]; if(s<0) continue; for(let t=0;t<T;t++) if(trd[p][t] && tie[s][t]){ row[w]=1; break; } } return row; });
+}
+function floats(){
+  const {W,P}=st; let mw=0, mf=0;
+  for(let w=0;w<W;w++){ let r=0; for(let p=0;p<P;p++){ r=dd[p][w]?r+1:0; mw=Math.max(mw,r);} }
+  for(let p=0;p<P;p++){ let r=0; for(let w=0;w<W;w++){ r=dd[p][w]?0:r+1; mf=Math.max(mf,r);} }
+  return [mw,mf];
+}
+
+// ---------- draft canvas ----------
+const cv = document.getElementById('draft'), cx = cv.getContext('2d');
+const wrapEl = document.getElementById('draftWrap');
+let L = {};
+function layout(){
+  const {S,T,W,P}=st;
+  const avail = Math.max(260, wrapEl.clientWidth);
+  const gapK = 0.7, pad = 2;
+  const cols = W + T + 1 + 2*gapK;
+  const raw = (avail - 2*pad) / cols;
+  const cs = Math.max(4, Math.min(18, raw < 9 ? Math.floor(raw*4)/4 : Math.floor(raw)));
+  const g = Math.max(3, Math.round(cs*gapK));
+  L = {cs,g,pad};
+  L.xd = pad; L.xt = pad + W*cs + g; L.xf = L.xt + T*cs + g;
+  L.yc = pad; L.ys = L.yc + cs + g; L.yd = L.ys + S*cs + g;
+  L.w = L.xf + cs + pad; L.h = L.yd + P*cs + pad;
+  const dpr = window.devicePixelRatio||1;
+  cv.width = Math.round(L.w*dpr); cv.height = Math.round(L.h*dpr);
+  cv.style.width = L.w+'px'; cv.style.height = L.h+'px';
+  cx.setTransform(dpr,0,0,dpr,0,0);
+}
+function shade(rgb,k){ return `rgb(${rgb.map(v=>Math.max(0,Math.min(255,Math.round(v*k)))).join(',')})`; }
+function gridLines(x,y,nc,nr,cs){
+  cx.lineWidth=1;
+  for(let i=0;i<=nc;i++){ cx.strokeStyle = i%4===0 ? '#c9b48c' : '#e3d5b8'; cx.beginPath(); cx.moveTo(x+i*cs+.5,y); cx.lineTo(x+i*cs+.5,y+nr*cs); cx.stroke(); }
+  for(let j=0;j<=nr;j++){ cx.strokeStyle = j%4===0 ? '#c9b48c' : '#e3d5b8'; cx.beginPath(); cx.moveTo(x,y+j*cs+.5); cx.lineTo(x+nc*cs,y+j*cs+.5); cx.stroke(); }
+}
+const INK='#3a2a1e';
+function drawDraft(play){
+  const {S,T,W,P,thr,tie,trd,wc,fc}=st, {cs}=L;
+  cx.clearRect(0,0,L.w,L.h);
+  const rowS = s => L.ys + (S-1-s)*cs;
+  // warp color row & weft color column
+  for(let w=0;w<W;w++){ cx.fillStyle=PAL[wc[w]]; cx.fillRect(L.xd+w*cs, L.yc, cs, cs); }
+  for(let p=0;p<P;p++){ cx.fillStyle=PAL[fc[p]]; cx.fillRect(L.xf, L.yd+p*cs, cs, cs); }
+  cx.strokeStyle='#0003'; cx.lineWidth=1;
+  cx.strokeRect(L.xd+.5,L.yc+.5,W*cs,cs); cx.strokeRect(L.xf+.5,L.yd+.5,cs,P*cs);
+  // grid backgrounds
+  cx.fillStyle='#fffaf0';
+  cx.fillRect(L.xd,L.ys,W*cs,S*cs); cx.fillRect(L.xt,L.ys,T*cs,S*cs); cx.fillRect(L.xt,L.yd,T*cs,P*cs);
+  // playback highlights under marks
+  if(play){
+    cx.fillStyle='#e9b94955';
+    cx.fillRect(L.xt, L.yd+play.p*cs, T*cs, cs);
+    for(let t=0;t<T;t++) if(trd[play.p][t]) cx.fillRect(L.xt+t*cs, L.ys, cs, S*cs);
+    for(let s=0;s<S;s++){ let lifted=false; for(let t=0;t<T;t++) if(trd[play.p][t]&&tie[s][t]) lifted=true; if(lifted) cx.fillRect(L.xd, rowS(s), W*cs, cs); }
+  }
+  gridLines(L.xd,L.ys,W,S,cs); gridLines(L.xt,L.ys,T,S,cs); gridLines(L.xt,L.yd,T,P,cs);
+  const ins = Math.max(1, Math.round(cs*0.14));
+  cx.fillStyle=INK;
+  for(let w=0;w<W;w++) if(thr[w]>=0) cx.fillRect(L.xd+w*cs+ins, rowS(thr[w])+ins, cs-2*ins+1, cs-2*ins+1);
+  for(let s=0;s<S;s++) for(let t=0;t<T;t++) if(tie[s][t]) cx.fillRect(L.xt+t*cs+ins, rowS(s)+ins, cs-2*ins+1, cs-2*ins+1);
+  for(let p=0;p<P;p++) for(let t=0;t<T;t++) if(trd[p][t]){ cx.beginPath(); cx.arc(L.xt+t*cs+cs/2+.5, L.yd+p*cs+cs/2+.5, cs*0.36, 0, 7); cx.fill(); }
+  // drawdown
+  for(let p=0;p<P;p++){
+    const fr=RGB[fc[p]];
+    for(let w=0;w<W;w++){
+      cx.fillStyle = dd[p][w] ? PAL[wc[w]] : shade(fr,0.93);
+      cx.fillRect(L.xd+w*cs, L.yd+p*cs, cs, cs);
+    }
+  }
+  if(cs>=7){
+    cx.lineWidth=1; cx.strokeStyle='#0000001a';
+    cx.beginPath();
+    for(let i=1;i<W;i++){ cx.moveTo(L.xd+i*cs+.5,L.yd); cx.lineTo(L.xd+i*cs+.5,L.yd+P*cs); }
+    for(let j=1;j<P;j++){ cx.moveTo(L.xd,L.yd+j*cs+.5); cx.lineTo(L.xd+W*cs,L.yd+j*cs+.5); }
+    cx.stroke();
+  }
+  cx.strokeStyle='#0004'; cx.strokeRect(L.xd+.5,L.yd+.5,W*cs,P*cs);
+  if(play) drawShuttle(play);
+}
+function drawShuttle(play){
+  const {W,P,fc,wc}=st, {cs}=L, p=play.p;
+  const y = L.yd + p*cs;
+  // row outline
+  cx.lineWidth=4; cx.strokeStyle='#fffaf0'; cx.strokeRect(L.xd-1.5, y-1.5, W*cs+3, cs+3); cx.lineWidth=1.5; cx.strokeStyle='#3a2a1e'; cx.strokeRect(L.xd-1.5, y-1.5, W*cs+3, cs+3);
+  // plucked flashes
+  const pr = play.prog, dir = play.dir;
+  for(const n of play.notes){
+    const f = dir>0 ? n.w/W : 1-(n.w+1)/W;
+    const age = (pr*1.0 - f*0.85);
+    if(age>=0 && age<0.5){ cx.fillStyle=`rgba(255,250,230,${0.75*(1-age/0.5)})`; cx.fillRect(L.xd+n.w*cs, y, cs, cs); }
+  }
+  const frac = Math.min(1, pr/0.85);
+  const sx = L.xd + (dir>0 ? frac*W*cs : (1-frac)*W*cs);
+  // weft being laid
+  cx.strokeStyle = PAL[fc[p]]; cx.lineWidth=Math.max(1.5,cs*0.25);
+  cx.beginPath(); cx.moveTo(dir>0?L.xd:L.xd+W*cs, y+cs/2); cx.lineTo(sx, y+cs/2); cx.stroke();
+  // shuttle: pointed boat of wood with a bobbin of weft
+  const len = Math.max(30, cs*5.2), hgt = Math.max(10, cs*1.5);
+  cx.save(); cx.translate(sx, y+cs/2);
+  cx.shadowColor='#0006'; cx.shadowBlur=6; cx.shadowOffsetY=2;
+  cx.beginPath(); cx.moveTo(-len/2,0); cx.quadraticCurveTo(-len*0.25,-hgt/2,0,-hgt/2); cx.quadraticCurveTo(len*0.25,-hgt/2,len/2,0);
+  cx.quadraticCurveTo(len*0.25,hgt/2,0,hgt/2); cx.quadraticCurveTo(-len*0.25,hgt/2,-len/2,0); cx.closePath();
+  const gr=cx.createLinearGradient(0,-hgt/2,0,hgt/2); gr.addColorStop(0,'#c58e5a'); gr.addColorStop(1,'#7a4b28');
+  cx.fillStyle=gr; cx.fill(); cx.shadowColor='transparent';
+  cx.fillStyle='#3b2416'; cx.fillRect(-len*0.22,-hgt*0.22,len*0.44,hgt*0.44);
+  cx.fillStyle=PAL[fc[p]]; cx.fillRect(-len*0.18,-hgt*0.16,len*0.36,hgt*0.32);
+  cx.restore();
+}
+
+// ---------- fabric preview ----------
+const fv = document.getElementById('fabric'), fx = fv.getContext('2d');
+function hash(n){ n = (n*374761393 + 668265263)|0; n = (n^(n>>>13))*1274126177|0; return ((n^(n>>>16))>>>0)/4294967296; }
+function sm(x){ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); }
+function renderFabric(ctx, w, h, tp){
+  const {W,P,wc,fc}=st;
+  const img=ctx.createImageData(w,h), d=img.data;
+  const TW=Math.PI*2;
+  for(let y=0;y<h;y++){
+    const cyI=Math.floor(y/tp), p=cyI%P, v=(y-cyI*tp+0.5)/tp;
+    const row=dd[p], prow=dd[(p-1+P)%P], nrow=dd[(p+1)%P];
+    const fr=RGB[fc[p]], hf=hash(cyI*7+3)*0.07-0.035;
+    for(let x=0;x<w;x++){
+      const cxI=Math.floor(x/tp), wI=cxI%W, u=(x-cxI*tp+0.5)/tp;
+      let col,k;
+      if(row[wI]){
+        col=RGB[wc[wI]];
+        k=0.6+0.47*Math.sin(Math.PI*u);
+        if(!prow[wI]) k*=0.7+0.3*sm(v/0.32);
+        if(!nrow[wI]) k*=0.7+0.3*sm((1-v)/0.32);
+        k+=0.035*Math.sin((v*2.2+u*0.9)*TW) + hash(cxI*13+1)*0.07-0.035;
+      } else {
+        col=fr;
+        k=0.6+0.47*Math.sin(Math.PI*v);
+        if(row[(wI-1+W)%W]) k*=0.7+0.3*sm(u/0.32);
+        if(row[(wI+1)%W]) k*=0.7+0.3*sm((1-u)/0.32);
+        k+=0.035*Math.sin((u*2.2+v*0.9)*TW) + hf;
+      }
+      const i=(y*w+x)*4;
+      d[i]=Math.min(255,col[0]*k); d[i+1]=Math.min(255,col[1]*k); d[i+2]=Math.min(255,col[2]*k); d[i+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  // soft vignette for a cloth-on-table feel
+  const g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.35,w/2,h/2,Math.max(w,h)*0.75);
+  g.addColorStop(0,'#0000'); g.addColorStop(1,'#00000033'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+}
+function drawFabric(){
+  const dpr=window.devicePixelRatio||1;
+  const cw=fv.clientWidth||400, ch=Math.round(cw*0.78);
+  fv.style.height=ch+'px';
+  fv.width=Math.round(cw*dpr); fv.height=Math.round(ch*dpr);
+  const tp=Math.max(2,Math.round(+document.getElementById('scale').value*dpr));
+  renderFabric(fx, fv.width, fv.height, tp);
+}
+
+// ---------- update / hash ----------
+let fabricQueued=false;
+function changed(full){
+  compute();
+  if(full) layout();
+  if(!playing) drawDraft(null);
+  if(!fabricQueued){ fabricQueued=true; requestAnimationFrame(()=>{ fabricQueued=false; drawFabric(); }); }
+  const [mw,mf]=floats();
+  document.getElementById('info').innerHTML = `${st.S} shafts · ${st.T} treadles · ${st.W}×${st.P} · longest float: warp <b>${mw}</b>, weft <b>${mf}</b>${Math.max(mw,mf)>7?' <span title="floats over 7 threads may snag">⚠</span>':''}`;
+  document.getElementById('draftName').textContent = st.name;
+  saveHash();
+}
+function enc(){
+  const b36=n=>n.toString(36);
+  return JSON.stringify({n:st.name,S:st.S,W:st.W,P:st.P,
+    h:st.thr.map(x=>x+1).join(''),
+    u:range(st.T).map(t=>b36(range(st.S).reduce((m,s)=>m|(st.tie[s][t]?1<<s:0),0))).join('.'),
+    r:st.trd.map(r=>b36(r.reduce((m,v,t)=>m|(v?1<<t:0),0))).join('.'),
+    a:st.wc.map(b36).join(''), f:st.fc.map(b36).join('')});
+}
+let hashTimer=0;
+function saveHash(){ clearTimeout(hashTimer); hashTimer=setTimeout(()=>{ try{ history.replaceState(null,'','#'+btoa(unescape(encodeURIComponent(enc())))); }catch(e){} },250); }
+function loadHash(){
+  try{
+    if(location.hash.length<4) return null;
+    const o=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));
+    const S=o.S, T=S+2, W=o.W, P=o.P;
+    if(![4,6,8].includes(S)||W<4||W>96||P<4||P>96) return null;
+    const s={name:o.n||'Shared draft',S,T,W,P};
+    s.thr=range(W).map(i=>{const v=parseInt(o.h[i]||'0',10); return v>=1&&v<=S?v-1:-1;});
+    const u=o.u.split('.').map(x=>parseInt(x,36)||0);
+    s.tie=range(S).map(sh=>range(T).map(t=>!!((u[t]||0)&(1<<sh))));
+    const r=o.r.split('.').map(x=>parseInt(x,36)||0);
+    s.trd=range(P).map(p=>range(T).map(t=>!!((r[p]||0)&(1<<t))));
+    const col=c=>{const v=parseInt(c,36); return v>=0&&v<PAL.length?v:0;};
+    s.wc=range(W).map(i=>col(o.a[i]||'0')); s.fc=range(P).map(i=>col(o.f[i]||'0'));
+    return s;
+  }catch(e){ return null; }
+}
+
+// ---------- interaction ----------
+const hoverEl=document.getElementById('hover');
+function hit(e){
+  const r=cv.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top, {cs}=L, {S,T,W,P}=st;
+  const c=(x0,n)=>{ const i=Math.floor((x-x0)/cs); return i>=0&&i<n?i:-1; };
+  const rr=(y0,n)=>{ const j=Math.floor((y-y0)/cs); return j>=0&&j<n?j:-1; };
+  let w=c(L.xd,W), t=c(L.xt,T), sRow=rr(L.ys,S), p=rr(L.yd,P);
+  const inF = x>=L.xf && x<L.xf+cs, inC = y>=L.yc && y<L.yc+cs;
+  if(w>=0 && sRow>=0) return {k:'thr',w,s:S-1-sRow};
+  if(t>=0 && sRow>=0) return {k:'tie',t,s:S-1-sRow};
+  if(t>=0 && p>=0) return {k:'trd',t,p};
+  if(w>=0 && inC) return {k:'wc',w};
+  if(inF && p>=0) return {k:'fc',p};
+  if(w>=0 && p>=0) return {k:'dd',w,p};
+  return null;
+}
+function describe(h){
+  if(!h) return 'Click or drag in the threading, tie-up, or treadling grids. Color rows paint with the selected yarn.';
+  const {thr,tie,trd,T}=st;
+  switch(h.k){
+    case 'thr': return `Threading · warp end ${h.w+1} → shaft ${h.s+1}`;
+    case 'tie': return `Tie-up · treadle ${h.t+1} ${tie[h.s][h.t]?'lifts':'does not lift'} shaft ${h.s+1}`;
+    case 'trd': return `Treadling · pick ${h.p+1}, treadle ${h.t+1} (shift-click to press several)`;
+    case 'wc': return `Warp color · end ${h.w+1} (${PALNAME[st.wc[h.w]]}) — paint with ${PALNAME[brush]}`;
+    case 'fc': return `Weft color · pick ${h.p+1} (${PALNAME[st.fc[h.p]]}) — paint with ${PALNAME[brush]}`;
+    case 'dd': { const up=dd[h.p][h.w]; const ts=range(T).filter(t=>trd[h.p][t]).map(t=>t+1); return `Drawdown · end ${h.w+1}, pick ${h.p+1}: ${up?'warp':'weft'} on top (shaft ${thr[h.w]>=0?thr[h.w]+1:'–'}, treadle ${ts.join('+')||'none'})${playing?' — click to jump the shuttle here':''}`; }
+  }
+}
+let drag=null;
+function applyAt(h, first){
+  if(!h || !drag || h.k!==drag.k) return false;
+  const s=st;
+  switch(h.k){
+    case 'thr': {
+      const from = drag.last ? drag.last : h;
+      const n=Math.abs(h.w-from.w);
+      for(let i=0;i<=n;i++){
+        const w = from.w + Math.sign(h.w-from.w)*i;
+        const sh = n? Math.round(from.s + (h.s-from.s)*i/n) : h.s;
+        if(first && s.thr[w]===sh){ drag.pendingClear=w; continue; } // a plain click on a mark clears it (on release)
+        s.thr[w] = sh;
+      }
+      break; }
+    case 'tie': if(first) drag.v=!s.tie[h.s][h.t]; s.tie[h.s][h.t]=drag.v; break;
+    case 'trd': {
+      if(first) drag.v=!s.trd[h.p][h.t];
+      const from = drag.last ? drag.last : h;
+      const n=Math.abs(h.p-from.p);
+      for(let i=0;i<=n;i++){
+        const p = from.p + Math.sign(h.p-from.p)*i;
+        const t = n? Math.round(from.t + (h.t-from.t)*i/n) : h.t;
+        if(drag.v && !drag.shift) s.trd[p].fill(false);
+        s.trd[p][t]=drag.v;
+      }
+      break; }
+    case 'wc': s.wc[h.w]=brush; break;
+    case 'fc': s.fc[h.p]=brush; break;
+    case 'dd': if(first && playing){ jumpTo(h.p); } return false;
+  }
+  drag.last=h;
+  if(st.name.indexOf('(edited)')<0 && st.name!=='Untitled') st.name += ' (edited)';
+  return true;
+}
+cv.addEventListener('pointerdown', e=>{
+  const h=hit(e); if(!h) return;
+  drag={k:h.k, shift:e.shiftKey, last:null, touch:e.pointerType==='touch', x:e.clientX, y:e.clientY, h, started:false};
+  if(!drag.touch){ e.preventDefault(); cv.setPointerCapture(e.pointerId); drag.started=true; if(applyAt(h,true)) changed(false); }
+});
+cv.addEventListener('pointermove', e=>{
+  const h=hit(e);
+  hoverEl.textContent=describe(h);
+  if(!drag) return;
+  if(drag.touch && !drag.started){
+    if(Math.abs(e.clientX-drag.x)>6){ drag.started=true; cv.setPointerCapture(e.pointerId); if(applyAt(drag.h,true)) changed(false); }
+    else return;
+  }
+  const ref = drag.last || drag.h;
+  if(h && h.k===drag.k && JSON.stringify(h)===JSON.stringify(ref)) return;
+  if(h && h.k===drag.k){ drag.moved=true; if(!drag.last) drag.last=drag.h; }
+  if(applyAt(h,false)) changed(false);
+});
+const endDrag = e=>{
+  if(drag && drag.touch && !drag.started && e.type==='pointerup'){ if(applyAt(drag.h,true)) changed(false); }
+  if(drag && drag.pendingClear!==undefined && !drag.moved){ st.thr[drag.pendingClear]=-1; changed(false); }
+  drag=null;
+};
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', ()=>{ drag=null; });
+cv.addEventListener('pointerleave', ()=>{ if(!drag) hoverEl.textContent=describe(null); });
+
+// ---------- audio ----------
+const PENT=[0,2,4,7,9];
+let ac=null, master=null, reverb=null, playing=false, nextT=0, nextP=0, queue=[], timer=0, raf=0;
+const pickDur = () => 60/ +document.getElementById('tempo').value;
+function initAudio(){
+  if(ac) return;
+  ac = new (window.AudioContext||window.webkitAudioContext)();
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value=-18; comp.ratio.value=3; comp.connect(ac.destination);
+  master = ac.createGain(); master.gain.value=0.9; master.connect(comp);
+  // generated hall impulse
+  const len=Math.floor(ac.sampleRate*2.6), ir=ac.createBuffer(2,len,ac.sampleRate);
+  for(let c=0;c<2;c++){ const d=ir.getChannelData(c); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2); }
+  reverb=ac.createConvolver(); reverb.buffer=ir;
+  const wet=ac.createGain(); wet.gain.value=0.32; reverb.connect(wet); wet.connect(comp);
+}
+const mtof = m => 440*Math.pow(2,(m-69)/12);
+function pluck(f, t, dur, g, pan){
+  const out=ac.createGain(); out.gain.setValueAtTime(0,t); out.gain.linearRampToValueAtTime(g,t+0.004); out.gain.exponentialRampToValueAtTime(0.0006,t+dur);
+  const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=0.6; lp.frequency.setValueAtTime(Math.min(12000,f*7),t); lp.frequency.exponentialRampToValueAtTime(Math.max(200,f*1.6),t+Math.min(dur,0.9));
+  const o1=ac.createOscillator(); o1.type='triangle'; o1.frequency.value=f;
+  const o2=ac.createOscillator(); o2.type='sine'; o2.frequency.value=f*2.003;
+  const g2=ac.createGain(); g2.gain.setValueAtTime(0.35,t); g2.gain.exponentialRampToValueAtTime(0.001,t+Math.min(dur,0.5));
+  o1.connect(lp); o2.connect(g2); g2.connect(lp);
+  let node=lp;
+  if(ac.createStereoPanner){ const pn=ac.createStereoPanner(); pn.pan.value=pan; lp.connect(pn); node=pn; }
+  node.connect(out); out.connect(master); out.connect(reverb);
+  o1.start(t); o2.start(t); o1.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+}
+function thump(t){
+  const len=Math.floor(ac.sampleRate*0.08), b=ac.createBuffer(1,len,ac.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,4);
+  const s=ac.createBufferSource(); s.buffer=b; const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=320;
+  const g=ac.createGain(); g.gain.value=0.22; s.connect(lp); lp.connect(g); g.connect(master); s.start(t);
+}
+function notesFor(p){
+  const {W,P,S,thr}=st, Z=4, step=3, groups=new Map(), dir = p%2===0 ? 1 : -1;
+  const prev=dd[(p-1+P)%P], row=dd[p];
+  for(let w=0;w<W;w++){
+    if(!row[w] || prev[w] || thr[w]<0) continue; // only where a warp end rises to the surface
+    let len=0; while(len<P && dd[(p+len)%P][w]) len++;
+    const deg = thr[w] + Math.floor(w/W*Z)*step;
+    const gr=groups.get(deg);
+    if(!gr) groups.set(deg,{deg,w,len});
+    else { if(dir<0) gr.w=w; gr.len=Math.max(gr.len,len); }
+  }
+  let notes=[...groups.values()];
+  if(notes.length>9){ notes.sort((a,b)=>b.len-a.len); notes=notes.slice(0,9); }
+  return {notes, dir};
+}
+function schedulePick(p, t0){
+  const dur=pickDur(), {W,P,fc}=st;
+  const {notes,dir}=notesFor(p);
+  const g=0.2/Math.sqrt(Math.max(1,notes.length));
+  for(const n of notes){
+    const f = dir>0 ? n.w/W : 1-(n.w+1)/W;
+    const midi = 50 + 12*Math.floor(n.deg/5) + PENT[n.deg%5];
+    pluck(mtof(midi), t0 + f*dur*0.85, Math.min(4.5, 0.35 + n.len*dur*0.9), g, (n.w/W)*1.4-0.7);
+  }
+  if(p===0 || fc[p]!==fc[(p-1+P)%P]) pluck(mtof(38+PENT[fc[p]%5]), t0, Math.min(5,0.8+dur*3), 0.22, 0);
+  thump(t0);
+  queue.push({p,t:t0,dir,notes});
+}
+function scheduler(){
+  const ahead=0.18;
+  while(nextT < ac.currentTime + ahead){
+    if(nextP>=st.P) nextP=0;
+    schedulePick(nextP, nextT);
+    nextT += pickDur(); nextP=(nextP+1)%st.P;
+  }
+  const now=ac.currentTime;
+  while(queue.length>2 && queue[1].t<=now-1) queue.shift();
+}
+function frame(){
+  if(!playing) return;
+  const now=ac.currentTime;
+  let cur=null; for(const q of queue) if(q.t<=now) cur=q;
+  if(cur && cur.p<st.P){ const prog=Math.min(1,(now-cur.t)/pickDur()); drawDraft({p:cur.p, prog, dir:cur.dir, notes:cur.notes}); }
+  raf=requestAnimationFrame(frame);
+}
+function jumpTo(p){ if(!playing) return; queue=[]; nextP=p; nextT=ac.currentTime+0.05; }
+const playBtn=document.getElementById('play');
+function startPlay(){
+  initAudio(); ac.resume();
+  playing=true; queue=[]; nextP=0; nextT=ac.currentTime+0.08;
+  timer=setInterval(scheduler,25); scheduler();
+  playBtn.classList.add('on'); playBtn.textContent='■ Stop';
+  raf=requestAnimationFrame(frame);
+}
+function stopPlay(){
+  playing=false; clearInterval(timer); cancelAnimationFrame(raf); queue=[];
+  playBtn.classList.remove('on'); playBtn.textContent='▶ Play the cloth';
+  drawDraft(null);
+}
+playBtn.onclick=()=> playing?stopPlay():startPlay();
+
+// ---------- UI wiring ----------
+const presetsEl=document.getElementById('presets');
+function setDraft(s){ st=s; document.getElementById('shafts').value=String(s.S); markPreset(); changed(true); if(playing){ queue=[]; nextP=0; } }
+function markPreset(){ [...presetsEl.children].forEach(b=>b.classList.toggle('on', b.dataset.k===st.key)); }
+Object.keys(PRESETS).forEach(k=>{
+  const b=document.createElement('button'); b.textContent=k; b.dataset.k=k;
+  b.onclick=()=>{ const s=PRESETS[k](); s.key=k; setDraft(s); };
+  presetsEl.appendChild(b);
+});
+const sb=document.createElement('button'); sb.textContent='✦ Surprise'; sb.className='accent'; sb.id='surprise';
+sb.onclick=()=>{ const s=surprise(); s.key=null; setDraft(s); };
+presetsEl.appendChild(sb);
+
+const swEl=document.getElementById('swatches');
+PAL.forEach((c,i)=>{ const b=document.createElement('button'); b.className='sw'+(i===brush?' sel':''); b.style.background=c; b.title=PALNAME[i];
+  b.onclick=()=>{ brush=i; [...swEl.children].forEach((x,j)=>x.classList.toggle('sel',j===i)); }; swEl.appendChild(b); });
+document.getElementById('fillWarp').onclick=()=>{ st.wc.fill(brush); changed(false); };
+document.getElementById('fillWeft').onclick=()=>{ st.fc.fill(brush); changed(false); };
+document.getElementById('weftAsWarp').onclick=()=>{ st.fc=range(st.P).map(p=>st.wc[p%st.W]); changed(false); };
+document.getElementById('tromp').onclick=()=>{
+  st.trd=range(st.P).map(p=>{ const r=Array(st.T).fill(false); const s=st.thr[p%st.W]; if(s>=0) r[s]=true; return r; });
+  if(!st.tie.some(r=>r.some(Boolean))) st.tie=build({S:st.S,thr:[1],tie:twillTie(st.S, st.S===4?[1,1,0,0]:st.S===6?[1,1,1,0,0,0]:[1,1,1,0,1,0,0,0]),trd:[1],wc:[0],fc:[0]}).tie;
+  st.name='Tromp as writ'; st.key=null; markPreset(); changed(false);
+};
+document.getElementById('clear').onclick=()=>{
+  st.thr.fill(-1); st.tie.forEach(r=>r.fill(false)); st.trd.forEach(r=>r.fill(false)); st.name='Untitled'; st.key=null; markPreset(); changed(false);
+};
+document.getElementById('shafts').onchange=e=>{
+  const S=+e.target.value, T=S+2, o=st;
+  const s={name:o.name,S,T,W:o.W,P:o.P,wc:o.wc,fc:o.fc,key:null};
+  s.thr=o.thr.map(x=> x<S ? x : x%S);
+  s.tie=range(S).map(i=>range(T).map(t=> (o.tie[i]&&o.tie[i][t])||false));
+  s.trd=o.trd.map(r=>range(T).map(t=>r[t]||false));
+  setDraft(s);
+};
+document.getElementById('scale').onchange=drawFabric;
+document.getElementById('export').onclick=()=>{
+  const c=document.createElement('canvas'); c.width=1800; c.height=1200;
+  renderFabric(c.getContext('2d'),1800,1200,12);
+  const a=document.createElement('a'); a.download='treadle-'+st.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'.png';
+  a.href=c.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove();
+};
+let rz=0; window.addEventListener('resize',()=>{ clearTimeout(rz); rz=setTimeout(()=>{ layout(); if(!playing) drawDraft(null); drawFabric(); },120); });
+
+// ---------- boot ----------
+const fromHash=loadHash();
+if(fromHash) setDraft(fromHash); else { const s=PRESETS['Rosepath'](); s.key='Rosepath'; setDraft(s); }
+
+// tiny test hook
+window.treadle = { get state(){return st;}, get layout(){return L;}, get drawdown(){return dd.map(r=>Array.from(r));}, preset:k=>{ const s=PRESETS[k](); s.key=k; setDraft(s); }, get playing(){return playing;}, notesFor };
+})();
+</script>
+</body>
+</html>
