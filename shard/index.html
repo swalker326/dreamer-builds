@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shard — a daily decipherment</title>
+<style>
+:root{--clay:#c9a87e;--clay2:#b38d60;--ink:#3a2718;--bench:#241c16;--line:#4a3a2c;--txt:#eadbc0;--mut:#a8987f;--ok:#5f9470;--near:#c99a3a;--no:#4d443d}
+*{box-sizing:border-box}
+html,body{margin:0}html{background:#120d0a}
+body{background:radial-gradient(ellipse at 30% -10%,#4a3626 0,#1d1611 55%,#120d0a 100%) fixed;color:var(--txt);font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
+header{display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:space-between;align-items:flex-end;max-width:1240px;margin:auto;padding:22px 28px 16px}
+h1{margin:0;font-weight:400;letter-spacing:.42em;font-size:30px;color:#f1e2c4}
+h1 small{display:block;letter-spacing:.16em;font-size:13px;color:var(--mut);font-style:italic;margin-top:4px}
+.hbtns{display:flex;gap:8px;flex-wrap:wrap}
+button{font-family:inherit;font-size:14px;color:var(--txt);background:#33281f;border:1px solid #5a4734;border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:#8b704f;background:#3c2f24}
+button:disabled{opacity:.4;cursor:default}
+button.pri{background:#8a5e34;border-color:#b07b46;color:#fff3df}
+button.pri:hover{background:#9c6a3b}
+button.on{background:#5b4630;border-color:#b08a5c}
+main{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:30px;max-width:1240px;margin:auto;padding:0 28px 48px;align-items:start}
+@media(max-width:920px){main{grid-template-columns:1fr;padding:0 10px 34px;gap:18px}header{padding:16px 14px 12px}h1{font-size:24px}}
+.tabwrap{filter:drop-shadow(0 22px 26px rgba(0,0,0,.6)) drop-shadow(0 2px 2px rgba(0,0,0,.5));position:relative}
+.tablet{position:relative;padding:40px 44px 36px;color:var(--ink);
+ background:
+  url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .25  0 0 0 0 .16  0 0 0 0 .08  0 0 0 .55 0'/></filter><rect width='240' height='240' filter='url(%23n)' opacity='.55'/></svg>"),
+  url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.008' numOctaves='4' seed='7'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .3  0 0 0 0 .16  0 0 0 1.1 -.35'/></filter><rect width='600' height='600' filter='url(%23m)'/></svg>"),
+  radial-gradient(ellipse at 35% 25%,#dcbf95 0,#c8a477 45%,#a88157 100%)}
+.tablet::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 40px rgba(70,40,15,.55),inset 0 0 6px rgba(60,35,10,.6)}
+.cracks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.tabhead{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:#6b4a2c;margin-bottom:16px;position:relative;z-index:2}
+.clue{position:relative;z-index:2;display:grid;grid-template-columns:30px 1fr;gap:4px 8px;padding:9px 0 11px;border-bottom:1px solid rgba(90,58,30,.22);box-shadow:0 1px 0 rgba(255,236,200,.25)}
+.clue:last-child{border-bottom:0;box-shadow:none}
+.num{font-size:12px;color:#7b5a3a;padding-top:8px;letter-spacing:.05em}
+.carved{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-end}
+.word{display:inline-flex;flex-direction:column;align-items:center}
+.word .gs{display:inline-flex;gap:0}
+.tr{display:none;font-size:11.5px;font-style:italic;color:#6e4e31;letter-spacing:.04em;margin-top:1px}
+body.tl .tr{display:block}
+.gloss{grid-column:2;font-style:italic;font-size:15px;color:#4b3220;opacity:.92}
+svg.g{width:23px;height:28px;overflow:visible;transition:transform .12s}
+svg.g path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+svg.g .hi{stroke:rgba(255,240,212,.62);stroke-width:2.6;transform:translate(.9px,1.1px)}
+svg.g .lo{stroke:var(--ink);stroke-width:2.5}
+svg.g .dhi{stroke:rgba(255,240,212,.62);stroke-width:3.6;transform:translate(.9px,1.1px)}
+svg.g .dlo{stroke:var(--ink);stroke-width:3.5}
+svg.g.hl .lo,svg.g.hl .dlo{stroke:#8a2f12}
+svg.g.hl{transform:translateY(-1px)}
+.big svg.g{width:27px;height:32px}
+/* bench */
+.bench{background:linear-gradient(180deg,#2b221b,#211913);border:1px solid var(--line);border-radius:16px;padding:22px 22px 24px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+.steps{display:flex;gap:10px;margin-bottom:16px;align-items:center}
+.step{flex:1;text-align:center;font-size:12.5px;letter-spacing:.14em;padding:7px 4px;border-radius:8px;border:1px solid #4a3a2c;color:var(--mut);cursor:pointer;background:#2a211a}
+.step.cur{border-color:#b08a5c;color:#f3e2c2;background:#3a2d22}
+.step.won{color:#bfe0c6}.step.won::after{content:" ✓"}
+.step.lost{color:#d9a08e}.step.lost::after{content:" ✗"}
+.ask{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:2px 0 8px}
+.prompt{font-size:21px;line-height:1.35;margin:0 0 16px;color:#f6e7c9}
+.strip{display:inline-block;padding:12px 16px 10px;border-radius:6px;color:var(--ink);background:radial-gradient(ellipse at 30% 20%,#dcc097,#bf9a6d);box-shadow:inset 0 0 14px rgba(70,40,15,.45),0 4px 10px rgba(0,0,0,.35)}
+.rows{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:5px;min-height:46px;align-items:center}
+.tile{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:4px 8px;border-radius:7px;color:var(--ink);background:radial-gradient(ellipse at 35% 25%,#e2c79f,#c19c70);box-shadow:inset 0 -2px 0 rgba(80,48,20,.35),0 2px 4px rgba(0,0,0,.4);border:0;font-size:15px;user-select:none;cursor:pointer;font-family:inherit}
+.tile .tr{font-size:10.5px}
+.tile.eng{font-style:italic;font-size:16px;padding:6px 11px}
+.tile.aff::before,.tile.aff.pre::after{position:absolute;top:50%;transform:translateY(-50%);color:#6b4a2c;font-size:15px}
+.tile.aff.suf::before{content:"–";left:2px}
+.tile.aff.pre::after{content:"–";right:2px}
+.tile.aff{padding:4px 12px}
+.tile.used{opacity:.22;cursor:default;box-shadow:none}
+.slot{min-width:44px;min-height:44px;border-radius:7px;border:1.5px dashed #5a4734}
+.row.cur{padding:6px;margin:-6px;border-radius:10px;background:rgba(255,230,190,.04)}
+.tile.f2{background:radial-gradient(ellipse at 35% 25%,#8fc29d,#5f9470)}
+.tile.f1{background:radial-gradient(ellipse at 35% 25%,#e6c473,#c99a3a)}
+.tile.f0{background:radial-gradient(ellipse at 35% 25%,#7d7066,#4d443d);color:#e6d9c4}
+.tile.f0 svg.g .lo,.tile.f0 svg.g .dlo{stroke:#efe2cb}.tile.f0 svg.g .hi,.tile.f0 svg.g .dhi{stroke:rgba(0,0,0,.35)}
+.tile.f0 .tr{color:#e6d9c4}
+.rowfb .tile{cursor:default}.rowfb.fresh .tile{animation:flip .35s ease both}
+@keyframes flip{from{transform:rotateX(80deg);opacity:.3}to{transform:none;opacity:1}}
+.bank{display:flex;flex-wrap:wrap;gap:7px;padding:14px;border-radius:12px;background:#1a1410;border:1px solid #3b2e23;margin-bottom:14px}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.left{margin-left:auto;color:var(--mut);font-size:13px;letter-spacing:.06em}
+.pip{display:inline-block;width:9px;height:9px;border-radius:50%;background:#c99a3a;margin-left:4px}.pip.x{background:#4a3a2c}
+.result{margin-top:14px;padding:14px 16px;border-radius:12px;background:#1a1410;border:1px solid #3b2e23}
+.result h3{margin:0 0 8px;font-weight:400;font-size:17px}
+.note{color:var(--mut);font-size:13.5px;line-height:1.5;margin-top:14px}
+.reveal{margin-top:18px}
+.reveal h3{font-weight:400;letter-spacing:.14em;text-transform:uppercase;font-size:14px;color:#e7c992;margin:0 0 10px}
+.reveal li svg.g{width:16px;height:19px;vertical-align:-4px}.reveal li .gs{display:inline-flex;background:#d4b68b;border-radius:4px;padding:2px 3px;vertical-align:middle}.reveal ul{margin:0 0 14px;padding-left:20px;line-height:1.55}
+.lex{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.lex>div{background:#1a1410;border:1px solid #3b2e23;border-radius:8px;padding:6px 8px;font-size:13px}
+.lex .strip{padding:4px 7px 2px;margin-bottom:3px}
+.lex .strip svg.g{width:16px;height:19px}
+.lex i{color:var(--mut)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#f0dfbf;color:#2a1c10;padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:50}
+.toast.show{opacity:1}
+.modal{position:fixed;inset:0;background:rgba(10,7,5,.72);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
+.modal.show{display:flex}
+.modal .box{max-width:560px;background:#2a211a;border:1px solid #5a4734;border-radius:14px;padding:22px 24px;line-height:1.55;font-size:15px}
+.modal h2{margin:0 0 8px;font-weight:400;letter-spacing:.2em}
+@media(max-width:920px){header button{font-size:13px;padding:6px 9px}.tablet{padding:30px 22px 26px}.clue{grid-template-columns:22px 1fr}svg.g{width:18px;height:22px}.bench{padding:16px 13px 18px}.prompt{font-size:18px}.carved{gap:3px 11px}.tile{min-width:40px;min-height:42px;padding:3px 6px}.slot{min-width:40px;min-height:42px}.tile svg.g{width:17px;height:21px}.big svg.g{width:22px;height:26px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>SHARD<small>decipher a broken tablet in a language no one has spoken</small></h1>
+  <div class="hbtns">
+    <button id="bTl" title="Show transliteration">Aa transliterate</button>
+    <button id="bToday">Today’s tablet</button>
+    <button id="bNew">New tablet</button>
+    <button id="bHelp">How to play</button>
+  </div>
+</header>
+<main>
+  <section class="tabwrap"><div class="tablet" id="tablet"></div></section>
+  <section class="bench" id="bench"></section>
+</main>
+<div class="modal" id="help"><div class="box">
+<h2>SHARD</h2>
+<p>A fragment of clay tablet survives with a few lines of an unknown language, each with a scribe’s English gloss. Every tablet is a brand-new language, generated from the day’s seed: its own sounds, its own script, its own word order and grammar.</p>
+<p><b>Translate three lines</b>, each harder than the last. Tap tiles to build your answer (tap a placed tile to take it back), then <b>Carve</b>. Every tile is judged: <span style="color:#8fc29d">green</span> = right tile, right place; <span style="color:#e6c473">ochre</span> = in the answer but elsewhere; <span style="color:#a89a8e">grey</span> = not in the answer. Five tries per line.</p>
+<p>Small tiles with a dash are affixes that attach to a word (they come before or after it, as the dash shows). Everything you need is somewhere on the tablet: compare lines that share a word, notice what changes when the English says <i>wolves</i> instead of <i>wolf</i>, and watch where the verb sits. Hover or tap a glyph to light up every copy of it.</p>
+<p>Each glyph is one syllable. At the end the tablet’s grammar is revealed.</p>
+<p style="text-align:right"><button class="pri" onclick="document.getElementById('help').classList.remove('show')">Begin</button></p>
+</div></div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ---------- seeded randomness ---------- */
+function xmur3(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}return()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return(h^=h>>>16)>>>0}}
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function makeRng(seed){const f=mulberry32(xmur3(seed)());const R={f,int:n=>Math.floor(f()*n),pick:a=>a[Math.floor(f()*a.length)],chance:p=>f()<p,
+ shuffle:a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(f()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a},
+ weighted:it=>{let s=it.reduce((x,y)=>x+y[1],0),r=f()*s;for(const [v,w] of it){if((r-=w)<0)return v}return it[0][0]}};return R}
+
+/* ---------- English side ---------- */
+const NOUNS=[["wolf","wolves",1],["child","children",1],["woman","women",1],["man","men",1],["bird","birds",1],["fox","foxes",1],["king","kings",1],["hunter","hunters",1],["horse","horses",1],["goat","goats",1],["crow","crows",1],["ox","oxen",1],["queen","queens",1],["bear","bears",1],
+ ["river","rivers",0],["stone","stones",0],["tree","trees",0],["boat","boats",0],["star","stars",0],["house","houses",0],["fire","fires",0],["seed","seeds",0],["moon","moons",0],["drum","drums",0]];
+const VERBS=[["see","sees","saw"],["follow","follows","followed"],["carry","carries","carried"],["find","finds","found"],["hear","hears","heard"],["greet","greets","greeted"],["chase","chases","chased"],["fear","fears","feared"],["watch","watches","watched"],["bless","blesses","blessed"],["keep","keeps","kept"],["seek","seeks","sought"],["love","loves","loved"],["guard","guards","guarded"]];
+const ADJS=["big","small","old","young","red","white","hungry","quiet","swift","wise","dark","bright","tall","lost","golden","sleeping"];
+const ORDERS=[["SOV",4],["SVO",4],["VSO",2],["VOS",1],["OVS",1],["OSV",1]];
+const ORDER_TXT={SOV:"Subject – Object – Verb: the verb comes last.",SVO:"Subject – Verb – Object, like English.",VSO:"Verb – Subject – Object: the verb comes first.",VOS:"Verb – Object – Subject: the verb comes first and the doer last.",OVS:"Object – Verb – Subject: the thing acted on comes first.",OSV:"Object – Subject – Verb: object first, verb last."};
+
+/* ---------- language generator ---------- */
+const CONS=["p","t","k","b","d","g","m","n","s","z","l","r","v","h","sh","th","f","y","w","q"];
+const VOW=["a","e","i","o","u"];
+const sylKey=s=>s.c+"."+s.v+(s.n?"n":"");
+const sylTxt=s=>s.c+s.v+(s.n?"n":"");
+const wordKey=ss=>ss.map(sylKey).join("|");
+function makeLanguage(R){
+  const cons=R.shuffle(CONS).slice(0,8+R.int(5)), vows=R.shuffle(VOW).slice(0,3+R.int(3));
+  const codaP=.08+R.f()*.22, vInit=.12+R.f()*.12;
+  const syl=(first,coda=true)=>({c:first&&R.chance(vInit)?"":R.pick(cons),v:R.pick(vows),n:coda&&R.chance(codaP)});
+  const used=new Set();
+  const mkWord=(lens,coda=true)=>{for(let t=0;t<200;t++){const n=R.weighted(lens),ss=[];for(let i=0;i<n;i++)ss.push(syl(i===0,coda));const k=wordKey(ss);if(!used.has(k)){used.add(k);return ss}}return null};
+  const affSyl=()=>{for(let t=0;t<200;t++){const s={c:R.pick(cons),v:R.pick(vows),n:false};const k=sylKey(s);if(!used.has(k)){used.add(k);return [s]}}return null};
+  const G={order:R.weighted(ORDERS),adjAfter:R.chance(.5),
+    pl:{pre:R.chance(.3),syl:affSyl()},past:{pre:R.chance(.4),syl:affSyl()},
+    acc:R.chance(.4)?{pre:R.chance(.15),syl:affSyl()}:null,adjAgree:R.chance(.3)};
+  const nn=R.shuffle(NOUNS.map((x,i)=>i));
+  const anim=nn.filter(i=>NOUNS[i][2]).slice(0,4), inan=nn.filter(i=>!NOUNS[i][2]).slice(0,2+R.int(2));
+  const lex={nouns:[],verbs:[],adjs:[]};
+  R.shuffle(anim.concat(inan)).forEach((k,i)=>lex.nouns.push({i,en:[NOUNS[k][0],NOUNS[k][1]],anim:!!NOUNS[k][2],stem:mkWord([[1,1],[2,5],[3,2]])}));
+  R.shuffle(VERBS).slice(0,3).forEach((v,i)=>lex.verbs.push({i,en:v,stem:mkWord([[1,2],[2,5],[3,1]])}));
+  R.shuffle(ADJS).slice(0,3).forEach((a,i)=>lex.adjs.push({i,en:a,stem:mkWord([[1,3],[2,4]])}));
+  const L={cons,vows,G,lex};
+  // every inflected form of every stem must be a distinct string of syllables
+  const forms=new Set();let clash=false;
+  const add=ms=>{const k=wordKey(ms.flat());if(forms.has(k))clash=true;forms.add(k)};
+  for(const n of lex.nouns)for(const pl of [0,1])for(const ac of G.acc?[0,1]:[0]){const ms=[n.stem];if(pl)G.pl.pre?ms.unshift(G.pl.syl):ms.push(G.pl.syl);if(ac)G.acc.pre?ms.unshift(G.acc.syl):ms.push(G.acc.syl);add(ms)}
+  for(const v of lex.verbs)for(const p of [0,1]){const ms=[v.stem];if(p)G.past.pre?ms.unshift(G.past.syl):ms.push(G.past.syl);add(ms)}
+  for(const a of lex.adjs)for(const p of G.adjAgree?[0,1]:[0]){const ms=[a.stem];if(p)G.pl.pre?ms.unshift(G.pl.syl):ms.push(G.pl.syl);add(ms)}
+  if(clash||[G.pl.syl,G.past.syl,G.acc?G.acc.syl:1].some(x=>x===null)||lex.nouns.concat(lex.verbs,lex.adjs).some(x=>!x.stem))return null;
+  L.script=makeScript(R,L);
+  return L;
+}
+
+/* ---------- procedural abugida ---------- */
+const GP=[];for(let r=0;r<3;r++)for(let c=0;c<3;c++)GP.push([5+9*c,7+10*r]);
+const SEGS=(()=>{const s=[];for(let a=0;a<9;a++)for(let b=a+1;b<9;b++){const dr=Math.abs((a/3|0)-(b/3|0)),dc=Math.abs(a%3-b%3);if(dr<=1&&dc<=1)s.push({e:[a,b],d:`M${GP[a]}L${GP[b]}`})}
+  for(let c=0;c<3;c++){const a=c,b=6+c,[x1,y1]=GP[a],[x2,y2]=GP[b];for(const dx of [-12,12]){const cx=x1+dx;if(cx>=-1&&cx<=29)s.push({e:[a,b],d:`M${x1} ${y1}Q${cx} 17 ${x2} ${y2}`,arc:1})}}
+  for(let r=0;r<3;r++){const a=3*r,b=3*r+2,[x1,y1]=GP[a],[x2,y2]=GP[b];for(const dy of [-12,12]){const cy=y1+dy;if(cy>=1&&cy<=33)s.push({e:[a,b],d:`M${x1} ${y1}Q14 ${cy} ${x2} ${y2}`,arc:1})}}
+  return s})();
+const MARKS=[{d:"",dot:"M14 2.2h.01"},{d:"M8 2.4L20 2.4"},{d:"",dot:"M28 17h.01"},{d:"M28 11L28 23"},{d:"",dot:"M14 32.6h.01"},{d:"M8 32.6L20 32.6"},{d:"M9 4L14 .6L19 4"},{d:"",dot:"M9.5 2.2h.01M18.5 2.2h.01"},{d:"M26.5 9Q31 13 26.5 17"},{d:"M9 31L14 34.4L19 31"}];
+const CODA="M.8 28.5L3.6 33.5";
+function makeScript(R,L){
+  const base={},seen=new Set();
+  for(const c of L.cons.concat([""])){
+    for(let t=0;t<400;t++){
+      const n=2+R.int(3),pick=[R.int(SEGS.length)];
+      let guard=0;
+      while(pick.length<n&&guard++<80){const nodes=new Set(pick.flatMap(i=>SEGS[i].e));const cand=SEGS.map((s,i)=>i).filter(i=>!pick.includes(i)&&SEGS[i].e.some(x=>nodes.has(x)));if(!cand.length)break;pick.push(R.pick(cand))}
+      const k=pick.slice().sort((a,b)=>a-b).join(",");
+      if(pick.length>=2&&!seen.has(k)&&pick.filter(i=>SEGS[i].arc).length<=1){seen.add(k);base[c]=pick.map(i=>SEGS[i].d).join("");break}
+    }
+  }
+  const marks=R.shuffle(MARKS),vm={};
+  L.vows.forEach((v,i)=>vm[v]=i===0?null:marks[i-1]);
+  return {base,vm,inherent:L.vows[0]};
+}
+const GC=new Map();
+function glyph(L,s){
+  const k=sylKey(s);if(GC.has(k))return GC.get(k);
+  const m=L.script.vm[s.v];
+  const d=L.script.base[s.c]+(m?m.d:"")+(s.n?CODA:""), dot=m&&m.dot?m.dot:"";
+  const h=`<svg class="g" viewBox="0 0 30 36" data-k="${k}" aria-hidden="true"><path class="hi" d="${d}"/>${dot?`<path class="dhi" d="${dot}"/>`:""}<path class="lo" d="${d}"/>${dot?`<path class="dlo" d="${dot}"/>`:""}</svg>`;
+  GC.set(k,h);return h;
+}
+const glyphs=(L,ss)=>`<span class="gs">${ss.map(s=>glyph(L,s)).join("")}</span>`;
+const translit=ms=>ms.map(m=>m.syl.map(sylTxt).join("")).join("");
+
+/* ---------- sentences ---------- */
+function randSentence(R,L,sp={}){
+  const lx=L.lex,anim=lx.nouns.filter(n=>n.anim);
+  const S={n:R.pick(anim).i,pl:R.chance(.4),adj:null};
+  let o;do{o=R.pick(lx.nouns)}while(o.i===S.n);
+  const O={n:o.i,pl:R.chance(.4),adj:null};
+  const V={v:R.pick(lx.verbs).i,past:R.chance(.5)};
+  const nA=sp.adj!=null?sp.adj:(R.chance(.45)?1:0)+(R.chance(.2)?1:0);
+  const nps=R.shuffle([S,O]);for(let k=0;k<nA;k++)nps[k].adj=R.pick(lx.adjs).i;
+  if(sp.pl&&!S.pl&&!O.pl)R.pick([S,O]).pl=true;
+  if(sp.past)V.past=true;
+  if(sp.some&&!S.pl&&!O.pl&&!V.past){if(R.chance(.5))V.past=true;else R.pick([S,O]).pl=true}
+  if(sp.acc&&L.G.acc)O.pl=O.pl||R.chance(.5);
+  return {S,V,O};
+}
+const sentKey=s=>JSON.stringify(s);
+function addAff(ms,id,a){const m={id,kind:"aff",syl:a.syl,pre:a.pre};a.pre?ms.unshift(m):ms.push(m)}
+function realize(L,s){
+  const G=L.G,lx=L.lex;
+  const np=(x,role)=>{
+    const ms=[{id:"n"+x.n,kind:"stem",syl:lx.nouns[x.n].stem}];
+    if(x.pl)addAff(ms,"PL",G.pl);if(role==="O"&&G.acc)addAff(ms,"ACC",G.acc);
+    const nw={cls:"N",role,morphs:ms};if(x.adj==null)return [nw];
+    const am=[{id:"a"+x.adj,kind:"stem",syl:lx.adjs[x.adj].stem}];if(x.pl&&G.adjAgree)addAff(am,"PL",G.pl);
+    const aw={cls:"A",role,morphs:am};return G.adjAfter?[nw,aw]:[aw,nw];
+  };
+  const vm=[{id:"v"+s.V.v,kind:"stem",syl:lx.verbs[s.V.v].stem}];if(s.V.past)addAff(vm,"PAST",G.past);
+  const parts={S:np(s.S,"S"),O:np(s.O,"O"),V:[{cls:"V",role:"V",morphs:vm}]};
+  const words=[...G.order].flatMap(k=>parts[k]);
+  words.forEach(w=>w.tmpl=w.cls+":"+w.morphs.map(m=>m.kind==="stem"?"X":m.id).join("-"));
+  return words;
+}
+function english(L,s){
+  const lx=L.lex;
+  const np=x=>{const n=lx.nouns[x.n],w=[];if(x.adj!=null)w.push(lx.adjs[x.adj].en);w.push(x.pl?n.en[1]:n.en[0]);return w};
+  const v=lx.verbs[s.V.v].en,vt=s.V.past?v[2]:s.S.pl?v[0]:v[1];
+  const a=np(s.S),b=np(s.O);
+  return {tokens:[...a,vt,...b],gloss:"The "+a.join(" ")+" "+vt+" the "+b.join(" ")+"."};
+}
+const concepts=s=>{const c=["n"+s.S.n,"n"+s.O.n,"v"+s.V.v];if(s.S.adj!=null)c.push("a"+s.S.adj);if(s.O.adj!=null)c.push("a"+s.O.adj);return c};
+
+/* ---------- solvability: a target is accepted only if a careful reader could derive it ---------- */
+function verify(P){
+  const L=P.L,sig={};
+  P.clues.forEach((s,i)=>concepts(s).forEach(c=>{(sig[c]=sig[c]||new Set()).add(i)}));
+  const same=(a,b)=>a.size===b.size&&[...a].every(x=>b.has(x));
+  const clueWords=P.clues.flatMap(s=>realize(L,s));
+  const tmpls=new Set(clueWords.map(w=>w.tmpl));
+  for(const [ti,t] of P.targets.entries()){
+    for(const c of concepts(t.s)){
+      if(!sig[c])return {ok:false,why:`T${ti+1}: '${c}' never appears on the tablet`};
+      for(const d in sig)if(d!==c&&same(sig[c],sig[d]))return {ok:false,why:`T${ti+1}: '${c}' and '${d}' always appear together`};
+    }
+    for(const w of realize(L,t.s)){
+      if(!tmpls.has(w.tmpl))return {ok:false,why:`T${ti+1}: word shape ${w.tmpl} is never attested`};
+      for(const m of w.morphs)if(m.kind==="aff"){
+        // contrast: some stem must be seen both with and without this affix, so it can be segmented
+        const okc=clueWords.some(a=>a.morphs.some(x=>x.id===m.id)&&clueWords.some(b=>stemOf(b)===stemOf(a)&&!b.morphs.some(x=>x.id===m.id)));
+        if(!okc)return {ok:false,why:`T${ti+1}: affix ${m.id} is never contrasted`};
+      }
+    }
+    if(P.clues.some(c=>sentKey(c)===sentKey(t.s)))return {ok:false,why:`T${ti+1} copies a clue`};
+  }
+  if(new Set(P.targets.map(t=>sentKey(t.s))).size!==P.targets.length)return {ok:false,why:"duplicate targets"};
+  return {ok:true};
+}
+const stemOf=w=>w.morphs.find(m=>m.kind==="stem").id;
+
+/* ---------- puzzle builder ---------- */
+const MAXG=5;
+const SPECS=[{dir:"c2e",adj:null,some:false},{dir:"e2c",adj:1,some:true},{dir:"e2c",adj:2,pl:true,past:true,acc:true}];
+function buildPuzzle(seed){
+  const R=makeRng("shard|"+seed);let attempts=0;
+  for(let li=0;li<60;li++){
+    const L=makeLanguage(R);if(!L)continue;
+    for(let k=0;k<250;k++){
+      attempts++;
+      const nC=6+R.int(2),clues=[],keys=new Set();let g=0;
+      while(clues.length<nC&&g++<200){const s=randSentence(R,L);const kk=sentKey(s);if(!keys.has(kk)){keys.add(kk);clues.push(s)}}
+      const targets=SPECS.map(sp=>{let s=randSentence(R,L,sp);if(sp.dir==="c2e"&&s.S.adj==null&&s.O.adj==null&&R.chance(.5))s.O.adj=R.pick(L.lex.adjs).i;return {dir:sp.dir,s}});
+      const P={seed,L,clues,targets,attempts};
+      if(verify(P).ok){finishPuzzle(P,R);return P}
+    }
+  }
+  throw new Error("no solvable tablet for seed "+seed);
+}
+function finishPuzzle(P,R){
+  const L=P.L,clueC=new Set(P.clues.flatMap(concepts));
+  P.clueWords=P.clues.map(s=>realize(L,s));P.clueEng=P.clues.map(s=>english(L,s).gloss);
+  for(const t of P.targets){
+    t.words=realize(L,t.s);t.eng=english(L,t.s);
+    if(t.dir==="e2c"){
+      const ms=t.words.flatMap(w=>w.morphs);t.answer=ms.map(m=>m.id);
+      const used=new Set(t.answer),pool=R.shuffle([...clueC].filter(c=>!used.has(c)));
+      const extra=pool.slice(0,3).map(id=>({id,kind:"stem",syl:stemSyl(L,id)}));
+      const affs=[["PL",L.G.pl],["PAST",L.G.past],["ACC",L.G.acc]].filter(([i,a])=>a&&!used.has(i)&&clueHasAff(P,i));
+      if(affs.length){const [i,a]=R.pick(affs);extra.push({id:i,kind:"aff",syl:a.syl,pre:a.pre})}
+      else{const m=R.pick(ms.filter(m=>m.kind==="aff").concat(ms.slice(0,1)));extra.push({...m})}
+      t.bank=R.shuffle(ms.map(m=>({...m})).concat(extra)).map(m=>({id:m.id,html:tileHtml(L,m),aff:m.kind==="aff",pre:m.pre}));
+    }else{
+      t.answer=t.eng.tokens.slice();
+      const lx=L.lex,ex=new Set();
+      for(const x of [t.s.S,t.s.O]){const n=lx.nouns[x.n].en;ex.add(x.pl?n[0]:n[1])}
+      const v=lx.verbs[t.s.V.v].en;ex.add(t.s.V.past?(t.s.S.pl?v[0]:v[1]):v[2]);
+      const cand=R.shuffle([...clueC].filter(c=>!concepts(t.s).includes(c)));
+      for(const c of cand.slice(0,2)){const i=+c.slice(1);ex.add(c[0]==="n"?lx.nouns[i].en[R.int(2)]:c[0]==="a"?lx.adjs[i].en:lx.verbs[i].en[1+R.int(2)])}
+      t.answer.forEach(a=>ex.delete(a));
+      t.bank=R.shuffle(t.answer.concat([...ex])).map(w=>({id:w,html:w,eng:true}));
+    }
+  }
+}
+const stemSyl=(L,id)=>({n:L.lex.nouns,v:L.lex.verbs,a:L.lex.adjs})[id[0]][+id.slice(1)].stem;
+const clueHasAff=(P,id)=>P.clueWords.flat().some(w=>w.morphs.some(m=>m.id===id));
+const tileHtml=(L,m)=>glyphs(L,m.syl)+`<span class="tr">${m.syl.map(sylTxt).join("")}</span>`;
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+const ROMAN=["I","II","III","IV","V","VI","VII","VIII","IX"];
+let P,ST,SEED;
+function todaySeed(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function seedLabel(s){const m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s);if(m){const d=new Date(+m[1],m[2]-1,+m[3]);return "Tablet of "+d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}return "Tablet “"+s+"”"}
+function wordHtml(L,w,big){return `<span class="word">${glyphs(L,w.morphs.flatMap(m=>m.syl))}<span class="tr">${translit(w.morphs)}</span></span>`}
+function sentenceHtml(L,words){return `<div class="carved">${words.map(w=>wordHtml(L,w)).join("")}</div>`}
+function feedback(guess,ans){
+  const fb=guess.map((g,i)=>g===ans[i]?2:0),left={};
+  ans.forEach((a,i)=>{if(fb[i]!==2)left[a]=(left[a]||0)+1});
+  guess.forEach((g,i)=>{if(fb[i]!==2&&left[g]){fb[i]=1;left[g]--}});return fb;
+}
+function status(i){const g=ST.g[i],t=P.targets[i];if(g.length&&g[g.length-1].join("\u0001")===t.answer.join("\u0001"))return "won";if(g.length>=MAXG)return "lost";return "play"}
+function save(){try{localStorage.setItem("shard:"+SEED,JSON.stringify({t:ST.t,g:ST.g}))}catch(e){}}
+function load(){try{const x=JSON.parse(localStorage.getItem("shard:"+SEED));if(x&&x.g&&x.g.length===3)return {t:x.t||0,g:x.g,cur:[]}}catch(e){}return null}
+
+function start(seed){
+  SEED=seed;GC.clear();P=buildPuzzle(seed);ST=load()||{t:0,g:[[],[],[]],cur:[]};
+  const u=new URL(location.href);if(seed===todaySeed())u.searchParams.delete("seed");else u.searchParams.set("seed",seed);history.replaceState(null,"",u);
+  renderTablet();renderBench();
+}
+function renderTablet(){
+  const L=P.L,R=makeRng("shape|"+SEED),el=$("tablet");
+  el.innerHTML=`<svg class="cracks" viewBox="0 0 100 100" preserveAspectRatio="none">${cracks(R)}</svg>
+   <div class="tabhead"><span>${seedLabel(SEED)}</span><span>${P.clues.length} lines</span></div>`+
+   P.clueWords.map((w,i)=>`<div class="clue"><div class="num">${ROMAN[i]}</div><div>${sentenceHtml(L,w)}</div><div class="gloss">${P.clueEng[i]}</div></div>`).join("");
+  el.style.clipPath=shape(R);
+}
+function shape(R){
+  const p=[],J=()=>R.f()*1.3,chip=R.int(4),cw=3+R.f()*3,ch=3+R.f()*3;
+  const side=(n,f)=>{for(let i=0;i<n;i++)p.push(f(i/n))};
+  side(18,t=>[t*100,J()]);side(14,t=>[100-J(),t*100]);side(18,t=>[100-t*100,100-J()]);side(14,t=>[J(),100-t*100]);
+  const corner=[[0,0],[100,0],[100,100],[0,100]][chip];
+  const out=p.filter(([x,y])=>!(Math.abs(x-corner[0])<cw&&Math.abs(y-corner[1])<ch));
+  return "polygon("+out.map(([x,y])=>x.toFixed(2)+"% "+y.toFixed(2)+"%").join(",")+")";
+}
+function cracks(R){
+  let s="";
+  for(let k=0;k<3;k++){
+    const e=R.int(4);let x=e===0?R.f()*100:e===1?100:e===2?R.f()*100:0,y=e===0?0:e===1?R.f()*100:e===2?100:R.f()*100;
+    const ang=Math.atan2(50-y,50-x)+(R.f()-.5)*1.2,len=8+R.f()*20,pts=[[x,y]];
+    for(let i=0;i<7;i++){x+=Math.cos(ang+(R.f()-.5)*1.4)*len/7;y+=Math.sin(ang+(R.f()-.5)*1.4)*len/7;pts.push([x,y])}
+    const d="M"+pts.map(p=>p.map(v=>v.toFixed(2)).join(" ")).join("L");
+    s+=`<path d="${d}" fill="none" stroke="rgba(255,238,205,.45)" stroke-width="1.6" vector-effect="non-scaling-stroke" transform="translate(.25 .35)"/><path d="${d}" fill="none" stroke="rgba(62,36,16,.7)" stroke-width="1.3" vector-effect="non-scaling-stroke"/>`;
+  }
+  return s;
+}
+function renderBench(){
+  const L=P.L,i=ST.t,t=P.targets[i],st=status(i),el=$("bench");
+  const steps=P.targets.map((x,j)=>`<div class="step ${j===i?"cur":""} ${status(j)!=="play"?status(j):""}" data-step="${j}">LINE ${ROMAN[j]}</div>`).join("");
+  const ask=t.dir==="c2e"?"Translate into English":"Carve it in the tablet’s tongue";
+  const prompt=t.dir==="c2e"?`<div class="strip big">${sentenceHtml(L,t.words)}</div>`:`“${t.eng.gloss}”`;
+  const byId={};t.bank.forEach(b=>byId[b.id]=b);
+  const tile=(id,cls="",attr="")=>{const b=byId[id];return `<span class="tile ${b.eng?"eng":""} ${b.aff?"aff "+(b.pre?"pre":"suf"):""} ${cls}" ${attr}>${b.html}</span>`};
+  let rows=ST.g[i].map((g,gi)=>{const fb=feedback(g,t.answer);return `<div class="row rowfb ${ST.fresh&&gi===ST.g[i].length-1?"fresh":""}">${g.map((id,k)=>tile(id,"f"+fb[k],`style="animation-delay:${k*45}ms"`)).join("")}</div>`}).join("");
+  if(st==="play"){
+    rows+=`<div class="row cur">${ST.cur.map((bi,k)=>tile(t.bank[bi].id,"",`data-cur="${k}"`)).join("")}${"<span class=slot></span>".repeat(Math.max(0,t.answer.length-ST.cur.length))}</div>`;
+  }
+  const left=MAXG-ST.g[i].length;
+  let html=`<div class="steps">${steps}</div><div class="ask">${ask}</div><div class="prompt">${prompt}</div><div class="rows">${rows}</div>`;
+  if(st==="play"){
+    html+=`<div class="bank">${t.bank.map((b,bi)=>`<span class="tile ${b.eng?"eng":""} ${b.aff?"aff "+(b.pre?"pre":"suf"):""} ${ST.cur.includes(bi)?"used":""}" data-bank="${bi}">${b.html}</span>`).join("")}</div>
+     <div class="ctrl"><button id="bBack">⌫ Undo</button><button id="bClear">Clear</button><button class="pri" id="bGo" ${ST.cur.length===t.answer.length?"":"disabled"}>Carve ▸</button>
+     <span class="left">tries ${"<span class=pip></span>".repeat(left)}${"<span class='pip x'></span>".repeat(MAXG-left)}</span></div>`;
+  }else{
+    const n=ST.g[i].length,next=P.targets.findIndex((x,j)=>status(j)==="play");
+    html+=`<div class="result"><h3>${st==="won"?`Deciphered in ${n} ${n===1?"try":"tries"}.`:"The clay crumbles. The scribe’s reading:"}</h3>
+      <div class="strip">${sentenceHtml(L,t.words)}</div><p style="margin:10px 0 0;font-style:italic">${t.eng.gloss}</p></div>`;
+    if(next>=0)html+=`<p style="margin-top:14px"><button class="pri" data-step="${next}">Next line ▸</button></p>`;
+  }
+  if(P.targets.every((x,j)=>status(j)!=="play"))html+=revealHtml();
+  else html+=`<p class="note">Every word and ending you need is attested on the tablet, and the word order can be read from any line. Hover or tap a glyph to light up its twins. Tap <b>Aa</b> to see the sounds.</p>`;
+  el.innerHTML=html;
+}
+function revealHtml(){
+  const L=P.L,G=L.G,aff=(a,nm)=>`${a.pre?"prefix":"suffix"} <b>${a.pre?"":"-"}${a.syl.map(sylTxt).join("")}${a.pre?"-":""}</b> ${glyphs(L,a.syl)}`;
+  const rules=[ORDER_TXT[G.order],`Adjectives come ${G.adjAfter?"after":"before"} the noun they describe.`,`Plural nouns take the ${aff(G.pl)}.`+(G.adjAgree?" Adjectives agree: they take it too.":""),
+    `The past tense is the ${aff(G.past)}; the present is unmarked.`];
+  if(G.acc)rules.push(`The object of a sentence is marked with the ${aff(G.acc)} (an accusative case).`);
+  rules.push(`The script is an abugida: each glyph is a syllable, a consonant body plus a vowel mark. <b>${L.script.inherent}</b> is the inherent vowel and has no mark; a small tick at the lower left adds a final <b>-n</b>.`);
+  const lx=L.lex,cells=[...lx.nouns.map(n=>[n.stem,n.en[0]]),...lx.verbs.map(v=>[v.stem,"to "+v.en[0]]),...lx.adjs.map(a=>[a.stem,a.en])].map(([s,e])=>`<div><div class="strip">${glyphs(L,s)}</div><br>${s.map(sylTxt).join("")} <i>${e}</i></div>`).join("");
+  const won=P.targets.filter((x,j)=>status(j)==="won").length;
+  return `<div class="reveal"><h3>The grammar of this tablet</h3><ul>${rules.map(r=>`<li>${r}</li>`).join("")}</ul>
+   <h3>Lexicon</h3><div class="lex">${cells}</div>
+   <p class="ctrl" style="margin-top:16px"><button class="pri" id="bShare">Share result</button><button id="bNew2">New tablet</button><span class="left">${won}/3 lines read</span></p></div>`;
+}
+function shareText(){
+  const lines=[`Shard · ${seedLabel(SEED).replace("Tablet of ","").replace("Tablet ","")}`];
+  P.targets.forEach((t,j)=>{const g=ST.g[j];lines.push(`${ROMAN[j]} ${status(j)==="won"?g.length:"X"}/${MAXG}`);g.forEach(r=>lines.push(feedback(r,t.answer).map(f=>["⬛","🟨","🟩"][f]).join("")))});
+  return lines.join("\n")+"\n"+location.href;
+}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove("show"),1800)}
+function submit(){
+  const t=P.targets[ST.t];if(ST.cur.length!==t.answer.length||status(ST.t)!=="play")return;
+  ST.g[ST.t].push(ST.cur.map(bi=>t.bank[bi].id));ST.cur=[];save();ST.fresh=1;renderBench();ST.fresh=0;
+  const s=status(ST.t);if(s==="won")toast(["Flawless.","Well read.","Deciphered.","Clean reading.","Good.","Phew."][ST.g[ST.t].length-1]||"Deciphered.");
+}
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-bank]");if(b&&!b.classList.contains("used")){ST.cur.push(+b.dataset.bank);renderBench();return}
+  const c=e.target.closest("[data-cur]");if(c){ST.cur.splice(+c.dataset.cur,1);renderBench();return}
+  const s=e.target.closest("[data-step]");if(s){ST.t=+s.dataset.step;ST.cur=[];save();renderBench();window.scrollTo&&innerWidth<920&&$("bench").scrollIntoView({behavior:"smooth"});return}
+  const id=e.target.closest("button")?.id;
+  if(id==="bGo")submit();
+  if(id==="bClear"){ST.cur=[];renderBench()}
+  if(id==="bBack"){ST.cur.pop();renderBench()}
+  if(id==="bShare"){const txt=shareText();(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("Result copied to clipboard"),()=>{prompt("Copy your result:",txt)})}
+  if(id==="bNew"||id==="bNew2"){const w=["ash","reed","salt","kiln","umber","flint","ochre","loam","silt","cinder","basalt","amber"];start(w[Math.random()*w.length|0]+"-"+Math.random().toString(36).slice(2,6));scrollTo(0,0)}
+  if(id==="bToday")start(todaySeed());
+  if(id==="bHelp")$("help").classList.add("show");
+  if(id==="bTl"){document.body.classList.toggle("tl");$("bTl").classList.toggle("on")}
+});
+$("help").addEventListener("click",e=>{if(e.target.id==="help")$("help").classList.remove("show")});
+let hk=null;
+function hl(k){if(k===hk)return;document.querySelectorAll("svg.g.hl").forEach(g=>g.classList.remove("hl"));hk=k;if(k)document.querySelectorAll(`svg.g[data-k="${k}"]`).forEach(g=>g.classList.add("hl"))}
+document.addEventListener("pointerover",e=>{const g=e.target.closest&&e.target.closest("svg.g");hl(g?g.dataset.k:null)});
+document.addEventListener("pointerout",e=>{if(!e.relatedTarget)hl(null)});
+document.addEventListener("keydown",e=>{if(!P||$("help").classList.contains("show"))return;if(e.key==="Enter")submit();if(e.key==="Backspace"){ST.cur.pop();renderBench()}});
+window.SHARD={buildPuzzle,verify,realize,english,get P(){return P},get ST(){return ST},start,shareText};
+start(new URLSearchParams(location.search).get("seed")||todaySeed());
+if(!localStorage.getItem("shard:seen")){try{localStorage.setItem("shard:seen","1")}catch(e){}$("help").classList.add("show")}
+</script>
+</body>
+</html>
