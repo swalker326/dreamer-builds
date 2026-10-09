@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kerf · fold, cut, unfold</title>
+<meta name="description" content="A quiet paper-cutting toy: fold a sheet, cut through every layer, unfold the pattern.">
+<style>
+:root{--ink:#2b2621;--mute:#8a8073;--bg:#ebe5da;--pill:rgba(255,252,246,.72);--line:rgba(60,45,30,.12);--acc:#2b2621}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;transition:color .9s ease}
+body.night{--ink:#efe6d6;--mute:#a39784;--pill:rgba(28,23,19,.62);--line:rgba(255,240,220,.12);--acc:#f3e7cf}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block;
+ cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg stroke='%23fff' stroke-width='3' fill='none' stroke-linecap='round'%3E%3Cpath d='M2 2 L14.5 11.5 M2 2 L11.5 14.5'/%3E%3Cpath d='M13 13 L19.5 21.5 M13 13 L21.5 19.5'/%3E%3Ccircle cx='21.5' cy='24.5' r='3.6'/%3E%3Ccircle cx='24.5' cy='21.5' r='3.6'/%3E%3C/g%3E%3Cg stroke='%232b2621' stroke-width='1.4' fill='none' stroke-linecap='round'%3E%3Cpath d='M2 2 L14.5 11.5 M2 2 L11.5 14.5'/%3E%3Cpath d='M13 13 L19.5 21.5 M13 13 L21.5 19.5'/%3E%3Ccircle cx='21.5' cy='24.5' r='3.6' fill='%23f6efe2'/%3E%3Ccircle cx='24.5' cy='21.5' r='3.6' fill='%23f6efe2'/%3E%3Ccircle cx='13' cy='13' r='1' fill='%232b2621'/%3E%3C/g%3E%3C/svg%3E") 2 2, crosshair}
+body.unfolded canvas#c{cursor:default}
+header{position:fixed;left:28px;top:22px;pointer-events:none;user-select:none}
+h1{margin:0;font:italic 400 34px/1 "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;letter-spacing:.01em}
+h1 span{font-style:normal;font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:12px;vertical-align:6px;font-family:inherit}
+#hint{position:fixed;left:0;right:0;top:74px;text-align:center;font:italic 15px/1.4 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;color:var(--mute);pointer-events:none;transition:opacity .8s ease;padding:0 20px}
+#hint.gone{opacity:0}
+#bar{position:fixed;left:50%;width:max-content;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:7px;border-radius:16px;background:var(--pill);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 8px 30px rgba(40,25,10,.12);border:1px solid var(--line);max-width:calc(100vw - 20px);flex-wrap:wrap;justify-content:center;transition:background .9s ease}
+.grp{display:flex;align-items:center;gap:2px}
+.sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+button{font:500 13px/1 inherit;font-family:inherit;color:var(--ink);background:transparent;border:0;border-radius:10px;padding:9px 11px;cursor:pointer;letter-spacing:.01em;transition:background .2s,color .2s,opacity .2s;white-space:nowrap}
+button:hover{background:rgba(120,100,70,.10)}
+button:disabled{opacity:.32;cursor:default;background:transparent}
+button.on{background:var(--acc);color:var(--bg)}
+body.night button.on{color:#1d1813}
+button.primary{background:var(--acc);color:var(--bg);padding:9px 15px}
+body.night button.primary{color:#1d1813}
+button.primary:hover{filter:brightness(1.1);background:var(--acc)}
+#sw{display:flex;gap:5px;padding:0 4px;align-items:center}
+.s{width:18px;height:18px;border-radius:50%;padding:0;border:0;box-shadow:0 0 0 1px rgba(0,0,0,.14) inset;cursor:pointer}
+.s:hover{transform:scale(1.12);background:inherit}
+.s.on{box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+#toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);font:italic 14px "Iowan Old Style",Palatino,Georgia,serif;color:var(--mute);opacity:0;transition:opacity .4s;pointer-events:none}
+#toast.show{opacity:1}
+@media (max-width:720px){
+ header{left:18px;top:16px} h1{font-size:28px} h1 span{display:none}
+ #hint{top:56px;font-size:14px}
+ #bar{gap:2px;padding:6px;bottom:max(10px,env(safe-area-inset-bottom));border-radius:14px}
+ button{padding:9px 9px;font-size:13px}
+ #sw{order:-1;width:100%;justify-content:center;padding:4px 0 6px;gap:7px}
+ .s{width:20px;height:20px}
+ .sep.a{display:none}
+ #toast{bottom:150px}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<header><h1>Kerf<span>fold · cut · unfold</span></h1></header>
+<div id="hint">Draw a loop to cut through every layer, then unfold.</div>
+<div id="toast"></div>
+<div id="bar">
+ <div class="grp" id="folds" title="Symmetry">
+  <button data-k="4">4</button><button data-k="6">6</button><button data-k="8">8</button>
+  <button id="mir" title="Mirror folds (off = rotation only)">Mirror</button>
+ </div>
+ <div class="sep a"></div>
+ <div id="sw"></div>
+ <div class="sep a"></div>
+ <div class="grp">
+  <button id="undo" title="Undo (⌘Z)">Undo</button>
+  <button id="rand" title="Random cuts">Random</button>
+  <button id="new" title="New sheet">New</button>
+  <button id="save" title="Save PNG">Save</button>
+  <button id="unf" class="primary" title="Unfold (space)">Unfold</button>
+ </div>
+</div>
+<script>
+"use strict";
+(()=>{
+const PI=Math.PI, TAU=PI*2;
+const COLORS=[
+ ["Kinari","#efe4cc"],["Sakura","#e8b4b0"],["Kaki","#d9824e"],["Matcha","#9fae7f"],["Asagi","#6fa7a6"],["Ai","#2f4b70"],
+ ["Rosa","#e5157f"],["Naranja","#ff7b1c"],["Amarillo","#f7c51e"],["Verde","#13a36b"],["Turquesa","#1aa3d6"],["Morado","#7a3fa1"]
+];
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
+const wedgeC=document.createElement('canvas'), wctx=wedgeC.getContext('2d');
+const compC=document.createElement('canvas'), cctx=compC.getContext('2d');
+const $=id=>document.getElementById(id);
+const S={k:6,mirror:true,cuts:[],color:COLORS[0][1],P:0,dir:0,scraps:[],poly:[],lasso:null,down:null,hover:null,
+ wedgeDirty:true,compDirty:true,crease:0,W:0,H:0,dpr:1,first:true,busy:false};
+
+/* ---------- small linear algebra: 2x2 matrices [a,b,c,d] meaning x'=a x + c y, y'=b x + d y ---------- */
+const I=[1,0,0,1];
+const mul=(A,B)=>[A[0]*B[0]+A[2]*B[1],A[1]*B[0]+A[3]*B[1],A[0]*B[2]+A[2]*B[3],A[1]*B[2]+A[3]*B[3]];
+const rot=a=>[Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a)];
+const refl=a=>[Math.cos(2*a),Math.sin(2*a),Math.sin(2*a),-Math.cos(2*a)];
+const flip=(a,p)=>mul(rot(a),mul([1,0,0,Math.cos(PI*p)],rot(-a)));
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const clamp=(x,a,b)=>x<a?a:x>b?b:x;
+
+/* ---------- geometry of the fold ---------- */
+function geom(){
+ const k=S.k, phi=PI/k;
+ const a1=S.mirror?0:-phi, a2=phi;
+ const tri=[[0,0],[1,Math.tan(a1)],[1,Math.tan(a2)]];
+ // stages + copies
+ let stages=[], copies=[{m:I,stage:-1}];
+ if(S.mirror){
+  const L={4:[[PI/4],[PI/2],[0]],6:[[PI/6],[PI/3,0],[2*PI/3]],8:[[PI/8],[PI/4],[PI/2],[0]]}[k];
+  L.forEach((lines,i)=>{const prev=copies.slice();for(const a of lines)for(const c of prev)copies.push({base:c.m,line:a,stage:i,m:mul(refl(a),c.m)})});
+  stages=L;
+ }else{
+  for(let j=1;j<k;j++)copies.push({j,stage:0,m:rot(j*2*phi)});
+  stages=new Array(k-1).fill(0);
+ }
+ const n=stages.length;
+ // all crease lines (angles from centre)
+ const creases=[];
+ if(S.mirror)for(let j=0;j<2*k;j++)creases.push(j*phi);else for(let j=0;j<k;j++)creases.push(-phi+j*2*phi);
+ return {k,phi,a1,a2,tri,copies,n,creases,stageDur:Math.min(.78,2.9/n)};
+}
+let G=geom();
+
+/* ---------- polygon utilities: Sutherland–Hodgman clipping against half-planes (exact) ---------- */
+function clipHalf(poly,f){ // keep f(p)>=0, f linear
+ const out=[];const n=poly.length;if(!n)return out;
+ for(let i=0;i<n;i++){const P=poly[i],Q=poly[(i+1)%n],fp=f(P),fq=f(Q);
+  if(fp>=0)out.push(P);
+  if((fp>=0)!==(fq>=0)){const t=fp/(fp-fq);out.push([P[0]+(Q[0]-P[0])*t,P[1]+(Q[1]-P[1])*t])}}
+ return out;
+}
+const crossF=(a,s)=>p=>s*(Math.cos(a)*p[1]-Math.sin(a)*p[0]);
+function clipToWedge(poly){
+ let r=clipHalf(poly,crossF(G.a1,1));r=clipHalf(r,crossF(G.a2,-1));r=clipHalf(r,p=>1-p[0]);return r;
+}
+function area(p){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a[0]*b[1]-b[0]*a[1]}return s/2}
+function centroid(p){let x=0,y=0;for(const q of p){x+=q[0];y+=q[1]}return [x/p.length,y/p.length]}
+function expandedWedge(eps){ // wedge with fold edges pushed outward by eps (for seamless erasing across folds)
+ const {a1,a2}=G;
+ const n1=[Math.sin(a1),-Math.cos(a1)], n2=[-Math.sin(a2),Math.cos(a2)];
+ const det=n1[0]*n2[1]-n1[1]*n2[0];
+ const O=[(eps*n2[1]-n1[1]*eps)/det,(n1[0]*eps-eps*n2[0])/det];
+ return [O,[O[0]+3*Math.cos(a1),O[1]+3*Math.sin(a1)],[O[0]+3*Math.cos(a2),O[1]+3*Math.sin(a2)]];
+}
+function pathPoly(c,p){c.moveTo(p[0][0],p[0][1]);for(let i=1;i<p.length;i++)c.lineTo(p[i][0],p[i][1]);c.closePath()}
+function kgon(){const r=1/Math.cos(G.phi),o=[];for(let j=0;j<G.k;j++){const a=(2*j+1)*G.phi;o.push([r*Math.cos(a),r*Math.sin(a)])}return o}
+
+/* ---------- paper texture ---------- */
+const tex=(()=>{const t=document.createElement('canvas');t.width=t.height=384;const c=t.getContext('2d');
+ let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+ for(let i=0;i<5200;i++){const x=rnd()*384,y=rnd()*384,a=rnd()*TAU,l=2+rnd()*9,d=rnd()<.5;
+  c.strokeStyle=d?`rgba(70,50,30,${.035+rnd()*.05})`:`rgba(255,255,255,${.05+rnd()*.08})`;c.lineWidth=.5+rnd()*.7;
+  c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+Math.cos(a+.5)*l*.5,y+Math.sin(a+.5)*l*.5,x+Math.cos(a)*l,y+Math.sin(a)*l);c.stroke()}
+ for(let i=0;i<9000;i++){c.fillStyle=rnd()<.5?`rgba(60,40,20,${rnd()*.05})`:`rgba(255,255,255,${rnd()*.06})`;c.fillRect(rnd()*384,rnd()*384,1,1)}
+ return t})();
+let texPat=null;
+
+/* ---------- views ---------- */
+let V0,V1;
+function availBox(){
+ const bar=$('bar').getBoundingClientRect();
+ const top=S.W<720?92:108, bottom=S.H-bar.top+(S.W<720?12:18);
+ return {x:14,y:top,w:S.W-28,h:Math.max(120,S.H-top-bottom)};
+}
+function computeViews(){
+ const A=availBox(), cx=A.x+A.w/2, cy=A.y+A.h/2;
+ const mid=(G.a1+G.a2)/2, r0=-PI/2-mid;
+ const R=rot(r0);const pts=G.tri.map(p=>ap(R,p));
+ const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+ const bw=Math.max(...xs)-Math.min(...xs), bh=Math.max(...ys)-Math.min(...ys);
+ const s0=Math.min(A.w/bw,A.h/bh)*.84;
+ const bc=[(Math.max(...xs)+Math.min(...xs))/2,(Math.max(...ys)+Math.min(...ys))/2];
+ V0={c:[cx-s0*bc[0],cy-s0*bc[1]],s:s0,r:r0};
+ const rad=1/Math.cos(G.phi);
+ const s1=Math.min(A.w,A.h)*.47/rad;
+ let best=null;for(let j=-G.k;j<=G.k;j++){const r=-PI/2-j*2*G.phi;if(best===null||Math.abs(r-r0)<Math.abs(best-r0))best=r}
+ V1={c:[cx,cy],s:s1,r:best};
+}
+const ap=(M,p)=>[M[0]*p[0]+M[2]*p[1],M[1]*p[0]+M[3]*p[1]];
+function viewAt(u){u=ease(clamp(u,0,1));return {c:[V0.c[0]+(V1.c[0]-V0.c[0])*u,V0.c[1]+(V1.c[1]-V0.c[1])*u],s:V0.s+(V1.s-V0.s)*u,r:V0.r+(V1.r-V0.r)*u}}
+function vm(V,M){const R=mul(rot(V.r),M);return [R[0]*V.s,R[1]*V.s,R[2]*V.s,R[3]*V.s,V.c[0],V.c[1]]}
+function setT(c,V,M,dpr){const m=vm(V,M||I);c.setTransform(m[0]*dpr,m[1]*dpr,m[2]*dpr,m[3]*dpr,m[4]*dpr,m[5]*dpr)}
+function toScreen(V,p){const q=ap(rot(V.r),p);return [V.c[0]+V.s*q[0],V.c[1]+V.s*q[1]]}
+function toWedge(V,q){return ap(rot(-V.r),[(q[0]-V.c[0])/V.s,(q[1]-V.c[1])/V.s])}
+
+/* ---------- wedge image (folded paper minus all cuts) ---------- */
+const WS=900;
+function buildWedge(){
+ const miny=Math.tan(G.a1),maxy=Math.tan(G.a2);
+ wedgeC.width=Math.ceil(WS);wedgeC.height=Math.ceil((maxy-miny)*WS);
+ const c=wctx;c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,wedgeC.width,wedgeC.height);
+ c.setTransform(WS,0,0,WS,0,-miny*WS);
+ c.globalCompositeOperation='source-over';c.fillStyle=S.color;c.beginPath();pathPoly(c,G.tri);c.fill();
+ c.setTransform(1,0,0,1,0,0);c.globalCompositeOperation='source-atop';
+ c.fillStyle=c.createPattern(tex,'repeat');c.fillRect(0,0,wedgeC.width,wedgeC.height);
+ c.setTransform(WS,0,0,WS,0,-miny*WS);c.globalCompositeOperation='destination-out';c.fillStyle='#000';
+ for(const cut of S.cuts){c.beginPath();pathPoly(c,cut);c.fill('nonzero')}
+ c.globalCompositeOperation='source-over';
+ S.wedgeDirty=false;
+}
+function drawWedgeImg(c,V,M,dpr){setT(c,V,M,dpr);const miny=Math.tan(G.a1);c.drawImage(wedgeC,0,miny,wedgeC.width/WS,wedgeC.height/WS)}
+
+/* ---------- exact unfolded composite: one sheet, every cut erased under every symmetry ---------- */
+function paintComposite(c,V,dpr,w,h,creaseA){
+ c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,w,h);
+ setT(c,V,I,dpr);c.globalCompositeOperation='source-over';c.fillStyle=S.color;c.beginPath();pathPoly(c,kgon());c.fill();
+ c.setTransform(1,0,0,1,0,0);c.globalCompositeOperation='source-atop';c.fillStyle=c.createPattern(tex,'repeat');c.fillRect(0,0,w,h);
+ const eps=1.6/(V.s*dpr)*dpr, ew=expandedWedge(eps);
+ c.globalCompositeOperation='destination-out';c.fillStyle='#000';
+ for(const cp of G.copies){c.save();setT(c,V,cp.m,dpr);c.beginPath();pathPoly(c,ew);c.clip();
+  c.beginPath();for(const cut of S.cuts)pathPoly(c,cut);c.fill('nonzero');c.restore()}
+ if(creaseA>0){ // soft creases where the folds were
+  c.globalCompositeOperation='source-atop';
+  for(const a of G.creases){const e=toScreen(V,[2.2*Math.cos(a),2.2*Math.sin(a)]),o=toScreen(V,[0,0]);
+   c.setTransform(dpr,0,0,dpr,0,0);
+   c.strokeStyle=`rgba(40,25,10,${.11*creaseA})`;c.lineWidth=1;c.beginPath();c.moveTo(o[0],o[1]);c.lineTo(e[0],e[1]);c.stroke();
+   const nx=-Math.sin(a+V.r)*1.1,ny=Math.cos(a+V.r)*1.1;
+   c.strokeStyle=`rgba(255,250,240,${.16*creaseA})`;c.beginPath();c.moveTo(o[0]+nx,o[1]+ny);c.lineTo(e[0]+nx,e[1]+ny);c.stroke()}
+ }
+ c.globalCompositeOperation='source-over';
+}
+
+/* ---------- paper layer for the current moment ---------- */
+function paintLayer(c,dpr,w,h,P){
+ const n=G.n,V=viewAt(P/n);
+ c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,w,h);
+ if(P<=0){ // folded: a stack of layers
+  const lay=Math.min(4,Math.round(Math.log2(G.copies.length))+1);
+  for(let i=lay-1;i>=0;i--){c.save();c.translate(i*1.3*dpr,i*1.7*dpr);if(i)c.filter=`brightness(${1-i*.05})`;drawWedgeImg(c,V,I,dpr);c.restore()}
+  return V;
+ }
+ if(P>=n&&!S.dir){ if(S.compDirty){compC.width=w;compC.height=h;paintComposite(cctx,V,dpr,w,h,1);S.compDirty=false}
+  c.globalAlpha=1;c.drawImage(compC,0,0);return V}
+ for(const cp of G.copies){
+  if(cp.stage<0){drawWedgeImg(c,V,I,dpr);continue}
+  let M;
+  if(S.mirror){const p=ease(clamp(P-cp.stage,0,1));if(p<=0)continue;M=mul(flip(cp.line,p),cp.base);
+   const lift=Math.sin(PI*p);c.save();if(lift>.01){c.shadowColor='rgba(30,20,10,.28)';c.shadowBlur=18*lift*dpr;c.shadowOffsetY=6*lift*dpr;
+    c.filter=`brightness(${.8+.2*Math.abs(Math.cos(PI*p))})`}
+   drawWedgeImg(c,V,M,dpr);c.restore();
+  }else{let a=0;for(let i=0;i<cp.j;i++)a+=ease(clamp(P-i,0,1));if(a<=0)continue;
+   const mov=cp.j-1<P&&P<cp.j;c.save();if(mov){c.shadowColor='rgba(30,20,10,.22)';c.shadowBlur=12*dpr;c.shadowOffsetY=4*dpr}
+   drawWedgeImg(c,V,rot(a*2*G.phi),dpr);c.restore()}
+ }
+ return V;
+}
+
+/* ---------- scene: background, backlight, paper ---------- */
+function mix(a,b,t){return a.map((x,i)=>Math.round(x+(b[i]-x)*t))}
+function paintScene(c,w,h,dpr,P,lay){
+ const L=ease(clamp(P/G.n,0,1)), V=viewAt(P/G.n);
+ const bg=mix([235,229,218],[22,18,15],L);
+ c.setTransform(1,0,0,1,0,0);c.fillStyle=`rgb(${bg})`;c.fillRect(0,0,w,h);
+ // linen vignette (day) / lamp glow (night)
+ const o=toScreen(V,[0,0]),ox=o[0]*dpr,oy=o[1]*dpr,R=V1.s/Math.cos(G.phi)*dpr;
+ let g=c.createRadialGradient(w/2,h*.42,0,w/2,h*.42,Math.max(w,h)*.75);
+ g.addColorStop(0,`rgba(255,253,248,${.55*(1-L)})`);g.addColorStop(1,`rgba(160,140,110,${.18*(1-L)})`);c.fillStyle=g;c.fillRect(0,0,w,h);
+ if(L>0){g=c.createRadialGradient(ox,oy,0,ox,oy,R*1.6);
+  g.addColorStop(0,`rgba(255,252,240,${L})`);g.addColorStop(.4,`rgba(255,236,196,${L})`);g.addColorStop(.62,`rgba(255,198,120,${.85*L})`);g.addColorStop(.85,`rgba(170,95,40,${.3*L})`);g.addColorStop(1,'rgba(120,60,20,0)');
+  c.fillStyle=g;c.fillRect(0,0,w,h)}
+ // backlight soaking through the paper itself: the sheet reads darker than the light, glowing at its heart
+ if(L>0){const lc=lay.getContext('2d');lc.setTransform(1,0,0,1,0,0);lc.globalCompositeOperation='source-atop';
+  lc.fillStyle=`rgba(45,25,8,${.34*L})`;lc.fillRect(0,0,w,h);
+  g=lc.createRadialGradient(ox,oy,0,ox,oy,R*1.05);g.addColorStop(0,`rgba(255,226,170,${.42*L})`);g.addColorStop(.6,`rgba(255,200,130,${.16*L})`);g.addColorStop(1,`rgba(20,8,0,${.22*L})`);
+  lc.fillStyle=g;lc.fillRect(0,0,w,h);lc.globalCompositeOperation='source-over'}
+ c.save();c.shadowColor=`rgba(70,50,30,${.24*(1-L)})`;c.shadowBlur=26*dpr;c.shadowOffsetY=12*(1-L)*dpr;
+ c.drawImage(lay,0,0);c.restore();
+}
+
+/* ---------- scraps that fall away ---------- */
+function spawnScrap(poly,prevCuts){
+ const sc=poly.map(p=>toScreen(V0,p));if(sc.length<3)return;
+ const xs=sc.map(p=>p[0]),ys=sc.map(p=>p[1]);const x0=Math.min(...xs)-2,y0=Math.min(...ys)-2,x1=Math.max(...xs)+2,y1=Math.max(...ys)+2;
+ const d=S.dpr,cw=Math.ceil((x1-x0)*d),ch=Math.ceil((y1-y0)*d);if(cw<2||ch<2||cw*ch>6e6)return;
+ const im=document.createElement('canvas');im.width=cw;im.height=ch;const c=im.getContext('2d');
+ c.setTransform(d,0,0,d,-x0*d,-y0*d);c.fillStyle=S.color;c.beginPath();pathPoly(c,sc);c.fill();
+ c.globalCompositeOperation='source-atop';c.fillStyle=c.createPattern(tex,'repeat');c.fillRect(x0,y0,x1-x0,y1-y0);
+ c.globalCompositeOperation='destination-out';const m=vm(V0,I);c.setTransform(m[0]*d,m[1]*d,m[2]*d,m[3]*d,(m[4]-x0)*d,(m[5]-y0)*d);
+ c.beginPath();for(const cut of prevCuts)pathPoly(c,cut);c.fill('nonzero');
+ const cx=(x0+x1)/2,cy=(y0+y1)/2,dx=cx-toScreen(V0,[.5,0])[0];
+ S.scraps.push({im,x:cx,y:cy,w:x1-x0,h:y1-y0,vx:(dx>0?1:-1)*(30+Math.random()*90),vy:-60-Math.random()*120,a:0,va:(Math.random()-.5)*5,t:0});
+}
+function stepScraps(dt){for(const s of S.scraps){s.t+=dt;s.vy+=1500*dt;s.vx*=.995;s.x+=s.vx*dt;s.y+=s.vy*dt;s.a+=s.va*dt}
+ S.scraps=S.scraps.filter(s=>s.y<S.H+300&&s.t<4)}
+function drawScraps(c,dpr){for(const s of S.scraps){c.save();c.setTransform(dpr,0,0,dpr,0,0);c.translate(s.x,s.y);c.rotate(s.a);
+ c.shadowColor='rgba(40,25,10,.25)';c.shadowBlur=8*dpr;c.shadowOffsetY=4*dpr;c.globalAlpha=clamp(1.6-s.t*.5,0,1);c.drawImage(s.im,-s.w/2,-s.h/2,s.w,s.h);c.restore()}}
+
+/* ---------- cutting ---------- */
+function commitCut(polyW){
+ if(polyW.length<3)return false;
+ const inside=clipToWedge(polyW);
+ if(inside.length<3||Math.abs(area(inside))*V0.s*V0.s<12){toast('That cut missed the paper.');return false}
+ const prev=S.cuts.slice();S.cuts.push(polyW);spawnScrap(inside,prev);
+ S.wedgeDirty=S.compDirty=true;
+ if(S.first){S.first=false;$('hint').classList.add('gone')}
+ ui();return true;
+}
+
+/* ---------- random patterns ---------- */
+function circle(cx,cy,r,n=40){const o=[];for(let i=0;i<n;i++){const a=i/n*TAU;o.push([cx+r*Math.cos(a),cy+r*Math.sin(a)])}return o}
+function ellipse(cx,cy,rx,ry,t,n=44){const o=[],c=Math.cos(t),s=Math.sin(t);for(let i=0;i<n;i++){const a=i/n*TAU,x=rx*Math.cos(a),y=ry*Math.sin(a);o.push([cx+x*c-y*s,cy+x*s+y*c])}return o}
+function diamond(cx,cy,rx,ry,t){return ellipse(cx,cy,rx,ry,t,4)}
+function tear(cx,cy,r,t,n=48){const o=[],c=Math.cos(t),s=Math.sin(t);for(let i=0;i<n;i++){const a=i/n*TAU,x=r*(Math.cos(a)*1.0+.0),y=r*Math.sin(a)*Math.pow(Math.sin(a/2),1.6);const X=x*1.35;o.push([cx+X*c-y*s,cy+X*s+y*c])}return o}
+function star(cx,cy,r1,r2,m,t){const o=[];for(let i=0;i<2*m;i++){const a=t+i*PI/m,r=i%2?r2:r1;o.push([cx+r*Math.cos(a),cy+r*Math.sin(a)])}return o}
+function crescent(cx,cy,r,t,n=40){const o=[];for(let i=0;i<=n;i++){const a=t-PI*.85+i/n*PI*1.7;o.push([cx+r*Math.cos(a),cy+r*Math.sin(a)])}
+ const ox=cx+Math.cos(t)*r*.45,oy=cy+Math.sin(t)*r*.45,r2=r*.78;for(let i=n;i>=0;i--){const a=t-PI*.75+i/n*PI*1.5;o.push([ox+r2*Math.cos(a),oy+r2*Math.sin(a)])}return o}
+function polar(r,a){return [r*Math.cos(a),r*Math.sin(a)]}
+function randomPattern(){
+ const R=Math.random,{a1,a2,phi}=G,span=a2-a1,mid=(a1+a2)/2,out=[];
+ const pick=a=>a[Math.floor(R()*a.length)];
+ // outer edge: scallops, notches or points
+ const edge=pick(['scallop','notch','point','scallop']),N=2+Math.floor(R()*3),y0=Math.tan(a1),y1=Math.tan(a2);
+ for(let i=0;i<=N;i++){const y=y0+(y1-y0)*(i/N);if(!S.mirror&&i===N)break;
+  const r=(y1-y0)/N*(.38+R()*.12);
+  if(edge==='scallop')out.push(circle(1.0,y,r));else if(edge==='notch')out.push(diamond(1.0,y,r*1.5,r,0));
+  else if(i<N)out.push([[1.02,y+r*.1],[1.02,y+(y1-y0)/N-r*.1],[1-r*1.8,y+(y1-y0)/N/2]])}
+ // motifs sitting on the fold lines (they become whole, symmetric shapes when unfolded)
+ const lines=S.mirror?[a1,a2]:[a2];
+ for(const a of lines){const m=1+Math.floor(R()*2);
+  for(let j=0;j<m;j++){const rr=.28+R()*.5,p=polar(rr,a),sz=.035+R()*.05*rr*2,typ=pick(['d','c','e','t','s']);
+   if(typ==='d')out.push(diamond(p[0],p[1],sz*2,sz,a));else if(typ==='c')out.push(circle(p[0],p[1],sz));
+   else if(typ==='e')out.push(ellipse(p[0],p[1],sz*2.2,sz*.8,a));else if(typ==='t')out.push(tear(p[0],p[1],sz*1.6,a+(R()<.5?0:PI)));
+   else out.push(star(p[0],p[1],sz*1.6,sz*.6,5,a))}}
+ // interior motifs
+ const m2=1+Math.floor(R()*3);
+ for(let j=0;j<m2;j++){const rr=.3+R()*.5,a=a1+span*(.28+R()*.44),p=polar(rr,a),w=Math.min(rr*Math.sin(span*.22),.09)*(.7+R()*.5),typ=pick(['e','t','cr','d','c']);
+  if(typ==='e')out.push(ellipse(p[0],p[1],w*1.9,w*.7,a+(R()-.5)));else if(typ==='t')out.push(tear(p[0],p[1],w*1.3,a+PI*(R()<.5?0:1)+(R()-.5)*.6));
+  else if(typ==='cr')out.push(crescent(p[0],p[1],w*1.2,a+PI));else if(typ==='d')out.push(diamond(p[0],p[1],w*1.6,w*.7,a));else out.push(circle(p[0],p[1],w*.9))}
+ // centre
+ if(R()<.7){const r=.05+R()*.09;out.push(R()<.5?circle(0,0,r):star(0,0,r*1.3,r*.6,G.k,mid))}
+ return out;
+}
+
+/* ---------- UI ---------- */
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),1800)}
+function ui(){
+ document.querySelectorAll('#folds [data-k]').forEach(b=>b.classList.toggle('on',+b.dataset.k===S.k));
+ $('mir').classList.toggle('on',S.mirror);
+ const unfolded=S.P>0||S.dir!==0;
+ $('undo').disabled=!S.cuts.length||unfolded;$('rand').disabled=unfolded||S.busy;
+ document.querySelectorAll('#folds button').forEach(b=>b.disabled=unfolded);
+ $('unf').textContent=(S.P>=G.n&&S.dir>=0)||S.dir>0?'Fold again':'Unfold';
+ document.body.classList.toggle('night',S.dir>0||S.P>=G.n);
+ document.body.classList.toggle('unfolded',unfolded);
+ document.querySelectorAll('.s').forEach(b=>b.classList.toggle('on',b.dataset.c===S.color));
+}
+const sw=$('sw');for(const [n,c] of COLORS){const b=document.createElement('button');b.className='s';b.style.background=c;b.title=n;b.dataset.c=c;b.setAttribute('aria-label',n+' paper');
+ b.onclick=()=>{S.color=c;S.wedgeDirty=S.compDirty=true;ui()};sw.appendChild(b)}
+function newSheet(){S.cuts=[];S.poly=[];S.lasso=null;S.wedgeDirty=S.compDirty=true;ui()}
+function setFold(k,m){if(S.P>0||S.dir)return;const had=S.cuts.length;S.k=k;S.mirror=m;G=geom();computeViews();newSheet();if(had)toast('A fresh sheet, folded anew.')}
+document.querySelectorAll('#folds [data-k]').forEach(b=>b.onclick=()=>setFold(+b.dataset.k,S.mirror));
+$('mir').onclick=()=>setFold(S.k,!S.mirror);
+$('undo').onclick=()=>{if(S.poly.length){S.poly=[];return}S.cuts.pop();S.wedgeDirty=S.compDirty=true;ui()};
+$('new').onclick=()=>{if(S.P>0||S.dir){S.dir=-1;S.after=newSheet;ui();return}newSheet()};
+$('unf').onclick=toggleUnfold;
+function toggleUnfold(){if(S.busy)return;S.poly=[];S.lasso=null;if(S.dir===0)S.dir=S.P>=G.n?-1:1;else S.dir=-S.dir;S.crease=0;ui()}
+$('rand').onclick=()=>{if(S.P>0||S.dir||S.busy)return;newSheet();const pat=randomPattern();S.busy=true;ui();let i=0;
+ const step=()=>{if(i>=pat.length){S.busy=false;ui();return}const cut=pat[i++];if(clipToWedge(cut).length>=3){const prev=S.cuts.slice();S.cuts.push(cut);spawnScrap(clipToWedge(cut),prev);S.wedgeDirty=true;S.compDirty=true}
+  setTimeout(step,70)};step();if(S.first){S.first=false;$('hint').classList.add('gone')}};
+$('save').onclick=()=>{
+ const N=2048,c=document.createElement('canvas');c.width=c.height=N;const g=c.getContext('2d');
+ const l=document.createElement('canvas');l.width=l.height=N;
+ const sv0=V0,sv1=V1;const r=1/Math.cos(G.phi);V1={c:[N/2,N/2],s:N*.43/r,r:sv1.r};V0=V1;
+ paintComposite(l.getContext('2d'),V1,1,N,N,1);
+ const oldN=G.n;paintScene(g,N,N,1,oldN,l);V0=sv0;V1=sv1;
+ c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`kerf-${S.k}${S.mirror?'m':'r'}-${Date.now().toString(36)}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)},'image/png');
+ toast('Saved.')};
+
+/* ---------- pointer ---------- */
+const pt=e=>{const r=cv.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
+cv.addEventListener('pointerdown',e=>{
+ if(S.P>0||S.dir){return}
+ if(S.busy)return;
+ cv.setPointerCapture(e.pointerId);const p=pt(e);S.down={p,pts:[p],travel:0,id:e.pointerId};e.preventDefault()});
+cv.addEventListener('pointermove',e=>{const p=pt(e);S.hover=p;const d=S.down;if(!d||d.id!==e.pointerId)return;
+ const l=d.pts[d.pts.length-1],dd=Math.hypot(p[0]-l[0],p[1]-l[1]);if(dd>1.5){d.pts.push(p);d.travel+=dd}
+ if(d.travel>10&&!S.poly.length)S.lasso=d.pts});
+cv.addEventListener('pointerup',e=>{const d=S.down;S.down=null;if(!d)return;const p=pt(e);
+ if(S.lasso){const L=S.lasso;S.lasso=null;if(L.length>=3)commitCut(L.map(q=>toWedge(V0,q)));return}
+ // tap: polygon point
+ if(S.poly.length>=3){const f=S.poly[0];if(Math.hypot(p[0]-f[0],p[1]-f[1])<16){const P=S.poly;S.poly=[];commitCut(P.map(q=>toWedge(V0,q)));return}}
+ if(d.travel>10&&S.poly.length){S.poly.push(p);return}
+ S.poly.push(p)});
+cv.addEventListener('pointercancel',()=>{S.down=null;S.lasso=null});
+cv.addEventListener('dblclick',()=>{if(S.poly.length>=3){const P=S.poly.slice(0,-1);S.poly=[];if(P.length>=3)commitCut(P.map(q=>toWedge(V0,q)))}});
+addEventListener('keydown',e=>{
+ if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$('undo').click()}
+ else if(e.key==='Escape'){S.poly=[];S.lasso=null}
+ else if(e.key==='Enter'&&S.poly.length>=3){const P=S.poly;S.poly=[];commitCut(P.map(q=>toWedge(V0,q)))}
+ else if(e.key===' '&&e.target===document.body){e.preventDefault();toggleUnfold()}});
+
+/* ---------- loop ---------- */
+function resize(){S.dpr=Math.min(devicePixelRatio||1,2.5);S.W=innerWidth;S.H=innerHeight;
+ cv.width=Math.round(S.W*S.dpr);cv.height=Math.round(S.H*S.dpr);layer.width=cv.width;layer.height=cv.height;computeViews();S.compDirty=true}
+addEventListener('resize',resize);
+let last=performance.now();
+function frame(t){const dt=Math.min(.05,(t-last)/1000);last=t;
+ if(S.dir){S.P+=S.dir*dt/G.stageDur;if(S.P>=G.n){S.P=G.n;S.dir=0;S.compDirty=true;ui()}else if(S.P<=0){S.P=0;S.dir=0;ui();if(S.after){const f=S.after;S.after=null;f()}}}
+ if(S.wedgeDirty)buildWedge();
+ stepScraps(dt);
+ const d=S.dpr,w=cv.width,h=cv.height;
+ paintLayer(lctx,d,w,h,S.P);
+ paintScene(ctx,w,h,d,S.P,layer);
+ if(S.P>=G.n&&!S.dir&&S.crease<1){S.crease=Math.min(1,S.crease+dt*1.5)}
+ drawScraps(ctx,d);
+ // in-progress cut
+ ctx.setTransform(d,0,0,d,0,0);
+ const night=S.P>0;const ink=night?'rgba(255,240,215,.9)':'rgba(43,38,33,.85)';
+ if(S.lasso&&S.lasso.length>1){ctx.beginPath();pathPoly(ctx,S.lasso);ctx.fillStyle='rgba(43,38,33,.07)';ctx.fill();
+  ctx.setLineDash([5,4]);ctx.lineWidth=1.25;ctx.strokeStyle=ink;ctx.stroke();ctx.setLineDash([])}
+ if(S.poly.length){ctx.beginPath();ctx.moveTo(S.poly[0][0],S.poly[0][1]);for(const q of S.poly)ctx.lineTo(q[0],q[1]);if(S.hover&&!S.down)ctx.lineTo(S.hover[0],S.hover[1]);
+  ctx.setLineDash([5,4]);ctx.lineWidth=1.25;ctx.strokeStyle=ink;ctx.stroke();ctx.setLineDash([]);
+  S.poly.forEach((q,i)=>{ctx.beginPath();ctx.arc(q[0],q[1],i?2.6:5,0,TAU);ctx.fillStyle=i?ink:'rgba(255,252,246,.95)';ctx.fill();if(!i){ctx.lineWidth=1.25;ctx.strokeStyle=ink;ctx.stroke()}})}
+ requestAnimationFrame(frame)}
+resize();ui();requestAnimationFrame(frame);
+window.KERF={S,get G(){return G},commitCut,toWedge:q=>toWedge(V0,q),clipToWedge,area,randomPattern};
+})();
+</script>
+</body>
+</html>
